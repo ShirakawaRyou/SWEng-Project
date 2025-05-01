@@ -13,3 +13,5 @@
 在frontend文件夹下使用 npm run serve
 
 在chrome中右上角的插件目录中点击按钮即可跳转到localhost:8080/IndexPage页面
+
+页面中为后端输出的内容
