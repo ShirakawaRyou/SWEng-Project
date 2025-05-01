@@ -1,0 +1,11 @@
+{
+    "manifest_version": 3,
+    "name": "跳转页面按钮",
+    "version": "1.0",
+    "description": "点击跳转到目标网页",
+    "permissions": ["activeTab", "tabs"],
+    "action": {
+      "default_popup": "popup.html",
+      "default_icon": "hello_extensions.png"
+    }
+  }
