@@ -1,11 +1,29 @@
 {
-    "manifest_version": 3,
-    "name": "跳转页面按钮",
-    "version": "1.0",
-    "description": "点击跳转到目标网页",
-    "permissions": ["activeTab", "tabs"],
-    "action": {
-      "default_popup": "popup.html",
-      "default_icon": "hello_extensions.png"
+  "manifest_version": 3,
+  "name": "网页顶部侧边栏扩展 (图标触发)",
+  "version": "1.1",
+  "description": "点击扩展图标可展开/收起网页顶部侧边栏。",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["sidebar.js"],
+      "css": ["styles.css"]
     }
+  ],
+  "action": {
+    "default_icon": {
+      
+    },
+    "default_title": "切换顶部侧边栏"
+  },
+  "icons": {
+    
   }
+}
