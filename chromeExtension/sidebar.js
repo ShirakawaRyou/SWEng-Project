@@ -40,13 +40,8 @@
 
     sidebar = document.createElement('div');
     sidebar.id = 'my-extension-sidebar';
-    sidebar.innerHTML = `
-      <div class="my-extension-sidebar-content">
-        <h2>侧边栏</h2>
-        <p>这是从右侧滑出的侧边栏。</p>
-        <p>你可以添加任何 HTML 元素。</p>
-      </div>
-    `;
+    // 使用 sidebarTemplate.js 中的模板
+    sidebar.innerHTML = getSidebarHTML();
 
     const setupDOMElements = () => {
         if (document.body) {
@@ -104,6 +99,14 @@
 
   // 脚本加载时立即尝试创建（隐藏的）侧边栏
   sidebar = createSidebar();
+  // 新增：为收起按钮添加点击事件
+  const collapseBtn = document.getElementById('my-extension-collapse-btn');
+  if (collapseBtn) {
+    collapseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleSidebar();
+    });
+  }
   // (可选) 添加日志确认
   if (sidebar) {
     console.log("Right-side sidebar element created on load.");

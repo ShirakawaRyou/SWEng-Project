@@ -6,7 +6,7 @@
   position: fixed;   /* 固定定位，相对于浏览器窗口 */
   top: 0;            /* 从窗口顶部开始 */
   right: 0;          /* !!! 关键：定位到窗口的右边 !!! */
-  width: 0;          /* 初始宽度为0，使其不可见，并从右侧“收起” */
+  width: 0;          /* 初始宽度为0，使其不可见，并从右侧"收起" */
   height: 100vh;     /* !!! 关键：高度为视窗高度的100%，即占满整个浏览器窗口的高度 !!! */
   background-color: #f8f9fa;
   border-left: 1px solid #dee2e6; /* 当从右侧滑出时，左边框可见 */
@@ -72,4 +72,63 @@ body.my-extension-sidebar-active-padding {
 /* 侧边栏展开时按钮跟随移动 */
 #my-extension-sidebar.my-extension-sidebar-expanded ~ #my-extension-sidebar-toggle {
   right: var(--my-extension-sidebar-width, 0px);
+}
+
+/* 侧边栏收起按钮样式 */
+#my-extension-collapse-btn {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 40px;
+  height: 40px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000000;
+}
+
+#my-extension-collapse-btn:hover {
+  background-color: #0056b3;
+}
+
+/* 新增：用户账号按钮样式 */
+#my-extension-account-btn {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background-color: #007bff;
+  color: white;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: none;
+  border-radius: 4px;
+  text-decoration: none;
+  cursor: pointer;
+  z-index: 1000000;
+}
+
+#my-extension-account-btn:hover {
+  background-color: #0056b3;
+}
+
+/* 新增：评分区域样式 */
+#my-extension-rating-section {
+  position: absolute;
+  top: 70px;       /* 20px (按钮上间距) + 40px (按钮高度) + 10px 间距 */
+  bottom: 60px;    /* 20px (底部间距) + 40px (收起按钮高度) */
+  left: 0;
+  right: 0;
+  overflow-y: auto;
+  padding: 20px;
+  background-color: #f9f9f9;  /* 占位背景色 */
+}
+#my-extension-rating-section p {
+  margin: 0;
+  color: #333;
 }
