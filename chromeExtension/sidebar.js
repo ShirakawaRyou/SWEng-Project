@@ -107,7 +107,7 @@
       toggleSidebar();
     });
   }
-  // (可选) 添加日志确认
+  // 添加日志确认
   if (sidebar) {
     console.log("Right-side sidebar element created on load.");
   } else {
@@ -121,5 +121,24 @@
       return true;
     }
   });
+
+  // 为账户按钮添加点击事件，根据登录状态动态跳转
+  const accountBtn = document.getElementById('my-extension-account-btn');
+  if (accountBtn) {
+    accountBtn.addEventListener('click', (e) => {
+      console.log("点击了账户按钮");
+      e.preventDefault();
+      // 检查登录状态：已登录跳转到主页面 /main，未登录跳转到登录页 /login
+      fetch('http://localhost:8000/api/v1/auth/users/me', { credentials: 'include' })
+        .then(response => {
+          if (response.ok) {
+            window.open('http://localhost:8080/main', '_blank');
+          } else {
+            window.open('http://localhost:8080/login', '_blank');
+          }
+        })
+        .catch(error => console.error('检查登录状态失败', error));
+    });
+  }
 
 })();
