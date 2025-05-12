@@ -19,7 +19,7 @@ async def connect_to_mongo():
     try:
         # Atlas连接字符串通常包含 retryWrites=true&w=majority，确保使用了支持这些的驱动版本
         # MotorClient 可以直接使用 Atlas SRV 连接字符串
-        db_manager.client = AsyncIOMotorClient(settings.MONGO_CONNECTION_STRING)
+        db_manager.client = AsyncIOMotorClient(settings.MONGO_CONNECTION_STRING + "&connectTimeoutMS=30000")
         # 在init_beanie中指定数据库，而不是在这里获取特定数据库名称的实例
         # db_manager.db = db_manager.client[settings.MONGO_DATABASE_NAME] # 这行可以移到init_beanie之后或省略
         

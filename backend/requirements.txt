@@ -13,3 +13,4 @@ flask-jwt-extended
 bcrypt
 pymongo[srv]
 pydantic[email]
+PyMuPDF
