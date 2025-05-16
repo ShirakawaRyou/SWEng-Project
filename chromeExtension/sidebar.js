@@ -1,5 +1,48 @@
 // sidebar.js
 (function() {
+  // Remove elements that wrongly try to load 'invalid/' to suppress repeated errors
+  function removeInvalidResources() {
+    ['src','href'].forEach(attr => {
+      document.querySelectorAll('[' + attr + '="invalid/"]').forEach(el => {
+        el.removeAttribute(attr);
+      });
+    });
+  }
+  // Run removal once DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', removeInvalidResources, { once: true });
+  } else {
+    removeInvalidResources();
+  }
+
+  // 设置登录表单提交处理
+  function setupLoginForm() {
+    const form = document.getElementById('my-extension-login-form');
+    if (!form) return;
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const username = document.getElementById('login-username').value;
+      const password = document.getElementById('login-password').value;
+      fetch('http://localhost:8000/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ username, password })
+      }).then(response => {
+        if (response.ok) {
+          alert('登录成功');
+          // 可在此关闭侧边栏或更新状态
+          toggleSidebar();
+        } else {
+          alert('登录失败，请检查用户名和密码');
+        }
+      }).catch(err => {
+        console.error('登录请求失败', err);
+        alert('网络错误，请稍后重试');
+      });
+    });
+  }
+
   let sidebar;
   const SIDEBAR_WIDTH_VAR = '--my-extension-sidebar-width'; // 定义CSS变量名
   let toggleButton; //新增浮于页面的按钮
@@ -9,18 +52,24 @@
 
     toggleButton = document.createElement('div');
     toggleButton.id = 'my-extension-sidebar-toggle';
-    toggleButton.innerHTML = '☰';
-    toggleButton.title = '这是一个按钮';
+    toggleButton.innerHTML = '⚡'; // 使用闪电图标，你也可以换成其他图标
+    toggleButton.title = '打开侧边栏';
     
-    // 将按钮添加到侧边栏中
-    if (sidebar) {
-      sidebar.appendChild(toggleButton);
-    }
+    // 将按钮直接添加到 body
+    const insertLogic = () => {
+      if (document.body) {
+        document.body.appendChild(toggleButton);
+      } else {
+        document.addEventListener('DOMContentLoaded', insertLogic);
+      }
+    };
+    insertLogic();
 
     //点击事件
     toggleButton.addEventListener('click', (e) => {
-        e.stopPropagation(); // 阻止事件冒泡
-        toggleSidebar();
+      e.stopPropagation(); // 阻止事件冒泡
+      toggleButton.title = sidebar.classList.contains('my-extension-sidebar-expanded') ? '打开侧边栏' : '关闭侧边栏';
+      toggleSidebar();
     });
   }
 
@@ -44,12 +93,13 @@
     sidebar.innerHTML = getSidebarHTML();
 
     const setupDOMElements = () => {
-        if (document.body) {
-            document.body.insertBefore(sidebar, document.body.firstChild);
-            createToggleButton();
-        } else {
-            document.addEventListener('DOMContentLoaded', setupDOMElements, { once: true} );
-        }
+      if (document.body) {
+        document.body.insertBefore(sidebar, document.body.firstChild);
+        createToggleButton();
+        setupLoginForm();  // 初始化登录表单事件
+      } else {
+        document.addEventListener('DOMContentLoaded', setupDOMElements, { once: true });
+      }
     };
     setupDOMElements();
 

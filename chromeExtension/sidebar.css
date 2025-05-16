@@ -17,30 +17,197 @@
 
 #my-extension-sidebar-toggle {
   position: fixed;
-  right: 0;
-  top: 20px;
-  width: 40px;
-  height: 40px;
+  right: 20px;
+  bottom: 20px;
+  width: 50px;
+  height: 50px;
   background: white;
-  border: 1px solid #ddd;
-  border-right: none;
-  border-radius: 4px 0 0 4px;
+  border: none;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 20px;
-  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
+  font-size: 24px;
+  color: #4A90E2;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
   z-index: 999999;
+  transition: all 0.3s ease;
 }
 
 #my-extension-sidebar-toggle:hover {
-  background: #f5f5f5;
+  background: #f0f0f0;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  transform: translateY(-2px);
+}
+
+#my-extension-sidebar-toggle:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+/* 侧边栏头部：标题和账户按钮 */
+.my-extension-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #ddd;
+}
+
+.my-extension-sidebar-title {
+  margin: 0;
+  font-size: 18px;
+  color: #333;
+}
+
+/* 用户账号按钮样式 */
+#my-extension-account-btn {
+  position: static;
+  margin: 0;
+  padding: 0;
+  width: 40px;
+  height: 40px;
+  background: white;
+  border: none;
+  border-radius: 50%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1000000;
+}
+
+/* 头像图片 */
+.my-extension-account-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .my-extension-sidebar-content {
   padding: 20px;
   height: 100%;
-  overflow-y: auto;
   width: 100%;
+  overflow-y: auto;
+}
+
+/* 自定义侧边栏内容滚动条 */
+.my-extension-sidebar-content::-webkit-scrollbar {
+  width: 8px;
+}
+.my-extension-sidebar-content::-webkit-scrollbar-track {
+  background: #f0f0f0;
+  border-radius: 4px;
+}
+.my-extension-sidebar-content::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+.my-extension-sidebar-content::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* 评分区域：垂直排列的分数框 */
+#my-extension-rating-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+  margin-bottom: 24px; /* 与 JD 区隔开 */
+}
+
+.my-extension-rating-box {
+  width: 90%; /* 略窄于侧边栏 */
+  min-height: 40px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  background: #fff;
+}
+
+/* 默认只显示第一个分数框 */
+#my-extension-rating-section .my-extension-rating-box:nth-child(n+2) {
+  display: none;
+}
+
+/* JD 可编辑区域 */
+#my-extension-jd-section {
+  width: 100%; /* 全宽度 */
+  min-height: 60px; /* 留出一定空间 */
+  margin-top: 24px; /* 与评分区分隔 */
+  padding: 16px; /* 内容内边距 */
+  box-sizing: border-box;
+  border-top: 1px solid #ccc; /* 分隔线 */
+  background: #fff;
+  color: #333;
+  font-size: 14px;
+}
+
+/* Collapse button styled inside sidebar at bottom-right corner */
+#my-extension-collapse-btn {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 40px;
+  height: 40px;
+  background-color: #4A90E2;
+  color: white;
+  border: none;
+  border-top-left-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1000000;
+}
+
+#my-extension-collapse-btn:hover {
+  background-color: #357ABD;
+}
+
+/* 登录表单区域 */
+#my-extension-login-section {
+  width: 100%;
+  padding: 16px;
+  box-sizing: border-box;
+  border-top: 1px solid #ccc;
+  background: #fafafa;
+}
+
+#my-extension-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#my-extension-login-form input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+#my-extension-login-form button {
+  padding: 10px 0;
+  font-size: 16px;
+  background-color: #4A90E2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+#my-extension-login-form button:hover {
+  background-color: #357ABD;
 } 
