@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 from backend.config import settings
 from backend.utils.db import connect_to_mongo, close_mongo_connection, initialize_database, get_database # 确保 get_database 导入
 from backend.api import auth as auth_router
-from backend.api import resume as resume_router # <--- 导入简历路由
+from backend.api import resume as resume_router
+from backend.api import matching as matching_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -38,7 +39,11 @@ async def ping_database():
 # 注册认证路由
 app.include_router(auth_router.router, prefix=f"{settings.API_V1_STR}/auth", tags=["Authentication"])
 # 注册简历路由
-app.include_router(resume_router.router, prefix=f"{settings.API_V1_STR}/resumes", tags=["Resumes"]) # <--- 添加这行
+app.include_router(resume_router.router, prefix=f"{settings.API_V1_STR}/resumes", tags=["Resumes"]) 
+
+app.include_router(matching_router.router, prefix=f"{settings.API_V1_STR}/matching", tags=["Matching Analysis"]) # <--- 添加这行
+
+
 
 
 if __name__ == "__main__":

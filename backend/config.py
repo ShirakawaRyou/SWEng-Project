@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256" # 可以保留默认值，除非 .env 中有定义
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30 # 可以保留默认值，除非 .env 中有定义
 
+    # Gemini API Key
+    GEMINI_API_KEY: str # <--- 新增
+
+
     # Pydantic V2 使用 model_config 来配置 .env 文件加载等行为，
     # 但我们在这里使用了 python-dotenv 的显式 load_dotenv()，
     # BaseSettings 仍会自动查找匹配的环境变量（包括由 load_dotenv 加载的）。
