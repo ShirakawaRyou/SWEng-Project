@@ -5,6 +5,7 @@ import MainPage from '../views/main/MainPage.vue';
 import RegisterPage from '../views/register/RegisterPage.vue';
 import TermsPage from '../views/TermsPage.vue';
 const routes = [
+  { path: '/', redirect: { name: 'Login' } },
   {
     path: '/login',
     name: 'Login',
@@ -37,4 +38,15 @@ const router = createRouter({
     routes,
   });
   
-  export default router;
+// 导航守卫：已登录用户无法访问登录页，未登录用户无法访问主页面
+router.beforeEach((to, from, next) => {
+  const accessToken = localStorage.getItem('access_token');
+  if (to.name === 'Login' && accessToken) {
+    return next({ name: 'Main' });
+  } else if (to.name === 'Main' && !accessToken) {
+    return next({ name: 'Login' });
+  }
+  next();
+});
+  
+export default router;

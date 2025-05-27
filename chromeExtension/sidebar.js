@@ -1,5 +1,17 @@
 // sidebar.js
 (function() {
+  // 注入侧边栏样式表，确保 CSS 生效
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = chrome.runtime.getURL('sidebar.css');
+  document.head.appendChild(link);
+
+  // 注入 Material Icons 字体
+  const iconFontLink = document.createElement('link');
+  iconFontLink.rel = 'stylesheet';
+  iconFontLink.href = 'https://fonts.googleapis.com/icon?family=Material+Icons';
+  document.head.appendChild(iconFontLink);
+
   // Remove elements that wrongly try to load 'invalid/' to suppress repeated errors
   function removeInvalidResources() {
     ['src','href'].forEach(attr => {
@@ -23,16 +35,37 @@
       e.preventDefault();
       const username = document.getElementById('login-username').value;
       const password = document.getElementById('login-password').value;
-      fetch('http://localhost:8000/api/v1/auth/login', {
+      const params = new URLSearchParams();
+      params.append('username', username);
+      params.append('password', password);
+      fetch('http://localhost:8000/api/v1/auth/login/token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ username, password })
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params
       }).then(response => {
         if (response.ok) {
-          alert('登录成功');
-          // 可在此关闭侧边栏或更新状态
-          toggleSidebar();
+          response.json().then(data => {
+            const token = data.access_token;
+            // 缓存 accessToken
+            chrome.storage.local.set({ accessToken: token }, () => {
+              // 获取并缓存用户信息
+              fetch('http://localhost:8000/api/v1/auth/users/me', {
+                headers: { 'Authorization': `Bearer ${token}` }
+              })
+              .then(res => res.json())
+              .then(user => {
+                chrome.storage.local.set({ currentUser: user }, () => {
+                  alert('登录成功');
+                  toggleSidebar();
+                });
+              })
+              .catch(err => {
+                console.error('获取用户信息失败', err);
+                alert('登录成功，但无法获取用户信息');
+                toggleSidebar();
+              });
+            });
+          });
         } else {
           alert('登录失败，请检查用户名和密码');
         }
@@ -52,9 +85,9 @@
 
     toggleButton = document.createElement('div');
     toggleButton.id = 'my-extension-sidebar-toggle';
-    toggleButton.innerHTML = '⚡'; // 使用闪电图标，你也可以换成其他图标
+    toggleButton.innerHTML = '<span class="material-icons">navigate_before</span>';
     toggleButton.title = '打开侧边栏';
-    
+
     // 将按钮直接添加到 body
     const insertLogic = () => {
       if (document.body) {
@@ -65,11 +98,42 @@
     };
     insertLogic();
 
-    //点击事件
+    // 点击事件
     toggleButton.addEventListener('click', (e) => {
-      e.stopPropagation(); // 阻止事件冒泡
+      e.stopPropagation();
       toggleButton.title = sidebar.classList.contains('my-extension-sidebar-expanded') ? '打开侧边栏' : '关闭侧边栏';
       toggleSidebar();
+    });
+    // 支持用户拖动 expand 切换按钮
+    let isDraggingToggle = false;
+    let dragStartX, dragStartY, toggleStartLeft, toggleStartTop;
+    toggleButton.addEventListener('mousedown', (e) => {
+      isDraggingToggle = true;
+      const rect = toggleButton.getBoundingClientRect();
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      toggleStartLeft = rect.left;
+      toggleStartTop = rect.top;
+      toggleButton.style.cursor = 'grabbing';
+      // 清除固定 right/bottom
+      toggleButton.style.right = 'auto';
+      toggleButton.style.bottom = 'auto';
+      toggleButton.style.left = toggleStartLeft + 'px';
+      toggleButton.style.top = toggleStartTop + 'px';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!isDraggingToggle) return;
+      const dx = e.clientX - dragStartX;
+      const dy = e.clientY - dragStartY;
+      toggleButton.style.left = (toggleStartLeft + dx) + 'px';
+      toggleButton.style.top = (toggleStartTop + dy) + 'px';
+    });
+    document.addEventListener('mouseup', () => {
+      if (isDraggingToggle) {
+        isDraggingToggle = false;
+        toggleButton.style.cursor = 'grab';
+      }
     });
   }
 
@@ -119,6 +183,9 @@
     }
 
     sidebar.classList.toggle('my-extension-sidebar-expanded');
+    if (sidebar.classList.contains('my-extension-sidebar-expanded')) {
+      checkLoginStatus();
+    }
     
     // 直接控制按钮的显示和隐藏
     if (toggleButton) {
@@ -149,6 +216,8 @@
 
   // 脚本加载时立即尝试创建（隐藏的）侧边栏
   sidebar = createSidebar();
+  // 初始化时检查登录状态，显示合适的图标或文字
+  checkLoginStatus();
   // 新增：为收起按钮添加点击事件
   const collapseBtn = document.getElementById('my-extension-collapse-btn');
   if (collapseBtn) {
@@ -172,23 +241,95 @@
     }
   });
 
-  // 为账户按钮添加点击事件，根据登录状态动态跳转
+  // 为账户按钮添加点击事件，根据本地 token 校验后跳转
   const accountBtn = document.getElementById('my-extension-account-btn');
   if (accountBtn) {
     accountBtn.addEventListener('click', (e) => {
-      console.log("点击了账户按钮");
       e.preventDefault();
-      // 检查登录状态：已登录跳转到主页面 /main，未登录跳转到登录页 /login
-      fetch('http://localhost:8000/api/v1/auth/users/me', { credentials: 'include' })
-        .then(response => {
-          if (response.ok) {
+      chrome.storage.local.get(['accessToken'], ({ accessToken }) => {
+        if (!accessToken) {
+          window.open('http://localhost:8080/login', '_blank');
+          return;
+        }
+        fetch('http://localhost:8000/api/v1/auth/users/me', {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        })
+        .then(res => {
+          if (res.ok) {
             window.open('http://localhost:8080/main', '_blank');
           } else {
+            chrome.storage.local.remove(['accessToken']);
             window.open('http://localhost:8080/login', '_blank');
           }
         })
-        .catch(error => console.error('检查登录状态失败', error));
+        .catch(err => {
+          console.error('检查登录状态失败', err);
+          window.open('http://localhost:8080/login', '_blank');
+        });
+      });
     });
   }
+
+  // 新增：检查登录状态函数
+  function checkLoginStatus() {
+    // 从页面 localStorage 获取 token 和用户信息
+    const accountBtn = document.getElementById('my-extension-account-btn');
+    const avatar = accountBtn.querySelector('.my-extension-account-avatar');
+    const content = document.querySelector('.my-extension-sidebar-content');
+    const defaultAvatar = chrome.runtime.getURL('image/default-avatar.png');
+    const accessToken = window.localStorage.getItem('access_token');
+    const userJson = window.localStorage.getItem('current_user');
+    if (!accessToken) {
+      // 未登录
+      if (avatar) avatar.style.display = 'none';
+      accountBtn.textContent = '登录';
+      return;
+    }
+    // 已登录：显示头像或文字
+    accountBtn.textContent = '';
+    if (avatar) {
+      avatar.style.display = '';
+      // 尝试从缓存的 current_user 获取头像
+      if (userJson) {
+        try {
+          const user = JSON.parse(userJson);
+          avatar.src = user.avatar || defaultAvatar;
+          content.innerHTML = `<p>您好，${user.full_name || user.email.split('@')[0]}</p>`;
+        } catch {
+          avatar.src = defaultAvatar;
+          content.innerHTML = '';
+        }
+      } else {
+        avatar.src = defaultAvatar;
+        content.innerHTML = '';
+      }
+    }
+  }
+
+  // 注入 SPA 路由监听，确保在 pushState/replaceState/popstate 后自动初始化或重置侧边栏
+  (function(history) {
+    const pushState = history.pushState;
+    history.pushState = function(state, title, url) {
+      const ret = pushState.apply(this, arguments);
+      window.dispatchEvent(new Event('locationchange'));
+      return ret;
+    };
+    const replaceState = history.replaceState;
+    history.replaceState = function(state, title, url) {
+      const ret = replaceState.apply(this, arguments);
+      window.dispatchEvent(new Event('locationchange'));
+      return ret;
+    };
+  })(window);
+  window.addEventListener('popstate', () => window.dispatchEvent(new Event('locationchange')));
+  window.addEventListener('locationchange', () => {
+    // 路由变化时，如果未注入则创建，否则重置为折叠状态
+    if (!document.getElementById('my-extension-sidebar')) {
+      createSidebar();
+    } else {
+      sidebar.classList.remove('my-extension-sidebar-expanded');
+      if (toggleButton) toggleButton.style.display = 'flex';
+    }
+  });
 
 })();

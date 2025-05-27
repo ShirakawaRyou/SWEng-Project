@@ -3,6 +3,7 @@
     <div class="login-card">
       <img src="@/assets/logo.png" alt="Logo" class="login-logo" />
       <h2 class="title">Sign in to ResumeAlign</h2>
+      <p v-if="currentUser" class="current-user-info">已登录为：{{ currentUser.full_name || currentUser.email }}</p>
       <form @submit.prevent="handleLogin">
         <div class="form-group">
           <label for="username">Username or email address</label>
@@ -33,7 +34,14 @@ export default {
     return {
       username: '',
       password: '',
-      errorMessage: ''
+      errorMessage: '',
+      currentUser: null
+    }
+  },
+  mounted() {
+    const userJson = localStorage.getItem('current_user')
+    if (userJson) {
+      this.currentUser = JSON.parse(userJson)
     }
   },
   methods: {
