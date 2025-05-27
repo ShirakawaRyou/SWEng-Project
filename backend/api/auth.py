@@ -3,6 +3,7 @@
 """ 
 # backend/api/auth.py
 from datetime import timedelta, datetime, timezone
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordRequestForm # 用于登录表单
@@ -99,6 +100,13 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
     # 可以将 Beanie 文档实例转换为 Pydantic 模型实例
     return UserRead.model_validate(current_user) # Pydantic V2
     # return UserRead.from_orm(current_user) # Pydantic V1
+
+
+@router.get("/users", response_model=List[UserRead])
+async def list_all_users(current_user: User = Depends(get_current_active_user)):
+    """列出所有用户，仅供管理使用"""
+    docs = await User.find_all().to_list()
+    return [UserRead.model_validate(u) for u in docs]
 
 
 @router.post("/users/me/deactivate", response_model=UserRead, status_code=status.HTTP_200_OK)

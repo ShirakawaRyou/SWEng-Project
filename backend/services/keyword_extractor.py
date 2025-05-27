@@ -1,6 +1,7 @@
 # backend/services/keyword_extractor.py
 import spacy
 from spacy.lang.en.stop_words import STOP_WORDS as spacy_stop_words
+import nltk
 from nltk.corpus import stopwords as nltk_stop_words # NLTK 的停用词列表更全一些
 from typing import List, Set
 
@@ -17,7 +18,11 @@ except OSError:
 
 
 # 合并停用词列表
-nltk_stopwords_set = set(nltk_stop_words.words('english'))
+try:
+    nltk_stopwords_set = set(nltk_stop_words.words('english'))
+except LookupError:
+    nltk.download('stopwords')
+    nltk_stopwords_set = set(nltk_stop_words.words('english'))
 combined_stopwords = spacy_stop_words.union(nltk_stopwords_set)
 
 def extract_keywords_from_jd(jd_text: str) -> List[str]:
