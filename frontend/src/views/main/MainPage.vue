@@ -1,182 +1,163 @@
 <template>
   <div class="main-page">
-    <h2>欢迎来到主页面</h2>
-    <div v-if="currentUser">
-      <p class="current-user-info">账号名称：{{ currentUser.full_name || currentUser.email.split('@')[0] }}</p>
-      <p class="current-user-info">邮箱：{{ currentUser.email }}</p>
-      <button class="logout-button" @click="handleLogout">退出登录</button>
-      <div class="users-list-container">
-        <h2>用户列表</h2>
-        <table>
-          <thead>
-            <tr><th>Email</th><th>Full Name</th><th>Active</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="user in paginatedUsers" :key="user.id">
-              <td>{{ user.email }}</td>
-              <td>{{ user.full_name }}</td>
-              <td>{{ user.is_active }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="pagination">
-          <button @click="prevPage" :disabled="currentPage === 1">Previous</button>
-          <span>Page {{ currentPage }} / {{ totalPages }}</span>
-          <button @click="nextPage" :disabled="currentPage === totalPages">Next</button>
-        </div>
-        <p v-if="error" class="error">{{ error }}</p>
+    <div class="sidebar">
+      <div class="personal-info" v-if="currentUser">
+        <h3>个人信息</h3>
+        <p>账号名称：{{ currentUser.full_name || currentUser.email }}</p>
+        <p>邮箱：{{ currentUser.email }}</p>
       </div>
     </div>
-    <p v-else>未检测到登录用户。</p>
+    <div class="resume-container">
+      <div class="resume-card" v-for="resume in resumes" :key="resume.id">
+        <div class="thumbnail">
+          <img :src="resume.thumbnail || pdfIcon" alt="Resume Thumbnail" />
+        </div>
+        <p class="resume-name">{{ resume.name || ('Resume ' + resume.id) }}</p>
+        <div class="actions">
+          <button @click.stop="downloadResume(resume.id)">下载</button>
+          <button @click.stop="previewResume(resume.id)">预览</button>
+          <button @click.stop="deleteResume(resume.id)">删除</button>
+        </div>
+      </div>
+      <div class="resume-card add-new" @click="goToUpload">
+        <div class="plus-icon">+</div>
+        <p>添加新简历</p>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
 import axios from 'axios';
+// eslint-disable-next-line no-unused-vars
+import pdfIcon from '@/assets/pdf-icon.png';
 export default {
   name: 'MainPage',
   data() {
     return {
       currentUser: null,
-      users: [],
-      currentPage: 1,
-      pageSize: 10,
+      resumes: [],
       error: ''
-    }
+    };
   },
   mounted() {
+    // 设置认证头~
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      this.error = '请先登录';
+      this.$router.push({ name: 'Login' });
+      return;
+    }
+    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    // 获取当前用户信息
     const userJson = localStorage.getItem('current_user');
-    if (userJson) {
-      this.currentUser = JSON.parse(userJson);
-    }
-    if (this.currentUser) {
-      this.fetchUsers();
-    }
-  },
-  computed: {
-    paginatedUsers() {
-      const start = (this.currentPage - 1) * this.pageSize;
-      return this.users.slice(start, start + this.pageSize);
-    },
-    totalPages() {
-      return Math.max(Math.ceil(this.users.length / this.pageSize), 1);
-    }
+    if (userJson) this.currentUser = JSON.parse(userJson);
+    // 获取简历列表
+    this.fetchResumes();
   },
   methods: {
-    handleLogout() {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('current_user');
-      this.$router.push({ name: 'Login' });
-    },
-    prevPage() {
-      if (this.currentPage > 1) this.currentPage--;
-    },
-    nextPage() {
-      if (this.currentPage < this.totalPages) this.currentPage++;
-    },
-    async fetchUsers() {
-      const token = localStorage.getItem('access_token');
-      if (token) {
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      } else {
-        this.error = '请先登录';
-        return;
-      }
+    async fetchResumes() {
       try {
-        const resp = await axios.get('/api/v1/auth/users');
-        this.users = resp.data;
+        const resp = await axios.get('/api/v1/resumes/');
+        this.resumes = resp.data;
       } catch (e) {
-        console.error('Failed to fetch users', e);
-        this.error = '无法加载用户列表';
+        console.error('无法获取简历列表', e);
+        this.error = '无法加载简历';
       }
+    },
+    downloadResume(id) {
+      axios.get(`/api/v1/resumes/${id}`, { responseType: 'blob' })
+        .then(res => {
+          const url = window.URL.createObjectURL(new Blob([res.data]));
+          const link = document.createElement('a');
+          link.href = url;
+          link.setAttribute('download', `${id}.pdf`);
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+        });
+    },
+    previewResume(id) {
+      window.open(`/api/v1/resumes/${id}`, '_blank');
+    },
+    async deleteResume(id) {
+      try {
+        await axios.delete(`/api/v1/resumes/${id}`);
+        this.resumes = this.resumes.filter(r => r.id !== id);
+      } catch (e) {
+        console.error('删除失败', e);
+      }
+    },
+    goToUpload() {
+      this.$router.push('/resume/upload');
     }
   }
-}
+};
 </script>
 
 <style scoped>
 .main-page {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+}
+.sidebar {
+  width: 20%;
+  border-right: 1px solid #e1e4e8;
   padding: 20px;
 }
-
-.current-user-info {
-  margin: 5px 0;
-  font-weight: bold;
+.personal-info h3 {
+  margin-bottom: 10px;
 }
-
-.logout-button {
-  margin-top: 10px;
-  padding: 0.5rem 1rem;
-  border: none;
-  background-color: #f56c6c;
-  color: white;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.logout-button:hover {
-  background-color: #dd6161;
-}
-
-.users-list-container {
-  margin-top: 20px;
-  background: #fff;
-  padding: 1rem;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-.users-list-container h2 {
-  margin-bottom: 1rem;
-  color: #24292e;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-bottom: 1rem;
-}
-
-thead th {
-  text-align: left;
-  border-bottom: 2px solid #e1e4e8;
-  padding: 0.5rem;
-  color: #0366d6;
-}
-
-tbody td {
-  border-bottom: 1px solid #e1e4e8;
-  padding: 0.5rem;
-  color: #24292e;
-}
-
-.pagination {
+.resume-container {
+  width: 80%;
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 20px;
+}
+.resume-card {
+  width: 150px;
+  border: 1px solid #d1d5da;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-}
-
-.pagination button {
-  padding: 0.5rem 1rem;
-  background: #0366d6;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
+  padding: 10px;
   cursor: pointer;
+  background: #fff;
 }
-
-.pagination button:disabled {
-  background: #a0a0a0;
-  cursor: not-allowed;
+.thumbnail img {
+  width: 100%;
+  height: 100px;
+  object-fit: cover;
 }
-
-.pagination span {
-  color: #24292e;
-}
-
-.error {
-  margin-top: 1rem;
-  color: red;
+.resume-name {
+  margin: 10px 0;
+  font-weight: bold;
   text-align: center;
+}
+.actions {
+  display: flex;
+  gap: 5px;
+}
+.actions button {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.resume-card.add-new {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #409eff;
+  width: 150px;
+  height: 180px;
+  border: 1px solid #409eff;
+  border-radius: 8px;
+}
+.plus-icon {
+  font-size: 48px;
+  line-height: 1;
 }
 </style> 

@@ -1,5 +1,16 @@
 // background.js
 
+// 拦截所有包含 /invalid/ 的网络请求，避免资源加载错误
+chrome.webRequest.onBeforeRequest.addListener(
+  details => {
+    if (details.url.includes('/invalid/')) {
+      return { cancel: true };
+    }
+  },
+  { urls: ['<all_urls>'] },
+  ['blocking']
+);
+
 chrome.action.onClicked.addListener((tab) => {
   if (!tab.id) {
     console.error("Tab ID is missing.");

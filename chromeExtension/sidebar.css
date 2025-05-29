@@ -84,13 +84,16 @@
   box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
 }
 
-/* 头像图片 */
+/* 头像图片 / 圆形背景 */
 .my-extension-account-avatar {
-  width: 80%;
-  height: 80%;
-  object-fit: contain;
-  display: block;
-  border-radius: 50%;
+  position: relative;
+  width: 40px;
+  height: 40px;
+  background: #EADDFF;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  border-radius: 100px;
   pointer-events: none;
 }
 
@@ -216,4 +219,16 @@
 
 #my-extension-login-form button:hover {
   background-color: #357ABD;
+}
+
+.resume-card.add-new {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #409eff;
+  width: 150px; /* 和普通卡片一样 */
+  height: 180px; /* 新增：和普通卡片高度接近 */
+  border: 1px solid #409eff;
+  border-radius: 8px;
 } 

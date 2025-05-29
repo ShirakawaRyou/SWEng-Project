@@ -3,7 +3,9 @@
 function getSidebarHTML() {
   return `
     <div class="my-extension-sidebar-header">
-      <a id="my-extension-account-btn" href="javascript:void(0)" title="用户账号"></a>
+      <a id="my-extension-account-btn" href="javascript:void(0)" title="用户账号">
+        Login
+      </a>
       <!-- Title area intentionally left empty -->
     </div>
     <div id="my-extension-rating-section">

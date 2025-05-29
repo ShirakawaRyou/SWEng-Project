@@ -5,7 +5,9 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "webRequest",
+    "webRequestBlocking"
   ],
   "host_permissions": [
     "*://*.linkedin.com/*",
@@ -15,6 +17,14 @@
     {
       "resources": ["image/default-avatar.png"],
       "matches": ["*://*.linkedin.com/*", "*://linkedin.com/*"]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": ["*://*.linkedin.com/*", "*://linkedin.com/*"],
+      "js": ["sidebarTemplate.js", "sidebar.js"],
+      "css": ["styles.css", "sidebar.css"],
+      "run_at": "document_start"
     }
   ],
   "background": {

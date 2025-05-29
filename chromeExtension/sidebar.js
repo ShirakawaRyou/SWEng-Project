@@ -1,12 +1,15 @@
 // sidebar.js
 (function() {
-  // 注入侧边栏样式表，确保 CSS 生效
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = chrome.runtime.getURL('sidebar.css');
-  document.head.appendChild(link);
-
-  // 注入 Material Icons 字体
+  // 动态注入侧边栏样式表和通用样式
+  const styleLink1 = document.createElement('link');
+  styleLink1.rel = 'stylesheet';
+  styleLink1.href = chrome.runtime.getURL('sidebar.css');
+  document.head.appendChild(styleLink1);
+  const styleLink2 = document.createElement('link');
+  styleLink2.rel = 'stylesheet';
+  styleLink2.href = chrome.runtime.getURL('styles.css');
+  document.head.appendChild(styleLink2);
+  // 动态注入 Material Icons 字体
   const iconFontLink = document.createElement('link');
   iconFontLink.rel = 'stylesheet';
   iconFontLink.href = 'https://fonts.googleapis.com/icon?family=Material+Icons';
@@ -85,6 +88,34 @@
 
     toggleButton = document.createElement('div');
     toggleButton.id = 'my-extension-sidebar-toggle';
+    // 确保 material-icons 字体样式可用
+    if (!document.getElementById('my-extension-material-icons-style')) {
+      const style = document.createElement('style');
+      style.id = 'my-extension-material-icons-style';
+      style.textContent = `
+        @font-face {
+          font-family: 'Material Icons';
+          font-style: normal;
+          font-weight: 400;
+          src: url(data:font/woff2;base64,d09GMgABAAAAAAWcABAAAAAA...) format('woff2'); /* 这里请替换为完整的base64字体 */
+        }
+        .material-icons {
+          font-family: 'Material Icons', sans-serif;
+          font-weight: normal;
+          font-style: normal;
+          font-size: 24px;
+          line-height: 1;
+          letter-spacing: normal;
+          text-transform: none;
+          display: inline-block;
+          white-space: nowrap;
+          direction: ltr;
+          -webkit-font-feature-settings: 'liga';
+          -webkit-font-smoothing: antialiased;
+        }
+      `;
+      document.head.appendChild(style);
+    }
     toggleButton.innerHTML = '<span class="material-icons">navigate_before</span>';
     toggleButton.title = '打开侧边栏';
 
@@ -270,39 +301,18 @@
     });
   }
 
-  // 新增：检查登录状态函数
+  // 简化：检查登录状态，仅切换按钮文本
   function checkLoginStatus() {
-    // 从页面 localStorage 获取 token 和用户信息
     const accountBtn = document.getElementById('my-extension-account-btn');
-    const avatar = accountBtn.querySelector('.my-extension-account-avatar');
-    const content = document.querySelector('.my-extension-sidebar-content');
-    const defaultAvatar = chrome.runtime.getURL('image/default-avatar.png');
-    const accessToken = window.localStorage.getItem('access_token');
-    const userJson = window.localStorage.getItem('current_user');
-    if (!accessToken) {
-      // 未登录
-      if (avatar) avatar.style.display = 'none';
-      accountBtn.textContent = '登录';
-      return;
-    }
-    // 已登录：显示头像或文字
-    accountBtn.textContent = '';
-    if (avatar) {
-      avatar.style.display = '';
-      // 尝试从缓存的 current_user 获取头像
-      if (userJson) {
-        try {
-          const user = JSON.parse(userJson);
-          avatar.src = user.avatar || defaultAvatar;
-          content.innerHTML = `<p>您好，${user.full_name || user.email.split('@')[0]}</p>`;
-        } catch {
-          avatar.src = defaultAvatar;
-          content.innerHTML = '';
-        }
-      } else {
-        avatar.src = defaultAvatar;
-        content.innerHTML = '';
-      }
+    // 优先从 localStorage 获取 token，保证网页端登录后侧边栏能同步
+    const token = window.localStorage.getItem('access_token');
+    if (token) {
+      accountBtn.textContent = 'Account';
+    } else {
+      // 若 localStorage 没有，再查扩展存储
+      chrome.storage.local.get(['accessToken'], ({ accessToken }) => {
+        accountBtn.textContent = accessToken ? 'Account' : 'Login';
+      });
     }
   }
 
