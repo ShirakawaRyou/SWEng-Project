@@ -4,6 +4,15 @@
 
 1.优化了简历的视图效果，同时完善了下载和删除效果，查看效果目前仍在排查bug中
 
+
+backend
+
+1.登陆有效期改到7天
+
+2.POST/api/v1/matching/match-resumes中jd_text和jd_id任选其一即可，数据库中会暂存jd（24h）
+
+3.POST/api/v1/matching/suggestions中jd_text和jd_id任选其一即可，resume_text_to_analyze可以不填
+
 -----更新日期：2025/05/28-----
 
 1.初步设计main页面的内容，之后需要美化主页，并实现各个功能
