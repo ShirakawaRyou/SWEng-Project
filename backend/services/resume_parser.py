@@ -6,8 +6,9 @@ import io
 from PyPDF2 import PdfReader
 from docx import Document as DocxDocument
 from fastapi import UploadFile
-from typing import Optional, Tuple # 导入 Optional 和 Tuple
+from typing import Optional, Tuple, Dict, List, Any # 确保导入 Dict, List, Any
 import fitz # PyMuPDF
+import re # 导入正则表达式库
 
 SUPPORTED_MIME_TYPES = {
     "application/pdf": "pdf",
@@ -29,10 +30,14 @@ async def parse_resume_file(file: UploadFile) -> str:
 
     try:
         if file_extension == "pdf":
-            pdf_file = io.BytesIO(content)
-            reader = PdfReader(pdf_file)
-            for page in reader.pages:
-                text_content += page.extract_text() or "" # 添加 "or """ 以处理 None 的情况
+            # ==> 使用 PyMuPDF (fitz) 解析 PDF <==
+            pdf_doc = fitz.open(stream=content, filetype="pdf")
+            for page_num in range(len(pdf_doc)):
+                page = pdf_doc.load_page(page_num)
+                # 使用 text_content += page.get_text("text") or "" 获取纯文本，通常效果更好
+                # "blocks" 参数可以提供更结构化的文本块，但对于纯文本提取，"text" 即可
+                text_content += page.get_text("text", sort=True) or "" # sort=True尝试按阅读顺序排序
+            pdf_doc.close()
         
         elif file_extension == "docx":
             docx_file = io.BytesIO(content)
@@ -40,7 +45,7 @@ async def parse_resume_file(file: UploadFile) -> str:
             for para in doc.paragraphs:
                 text_content += para.text + "\n"
         
-        return text_content.strip()
+        return ' '.join(text_content.split()) # 清理多余的空格和换行符
 
     except Exception as e:
         # 可以记录更详细的日志
@@ -108,3 +113,101 @@ async def generate_pdf_thumbnail(pdf_content: bytes) -> Optional[Tuple[bytes, st
     #     if doc:
     #         print("[Thumbnail Service] Closing PDF document in finally.")
     #         doc.close()
+
+# --- 新增：简历区段化逻辑 ---
+SECTION_TITLE_KEYWORDS = {
+    "contact_info": [r"contact information", r"contact details", r"personal information", r"personal details", r"phone", r"email", r"linkedin", r"github", r"portfolio"],
+    "summary": [r"summary", r"objective", r"professional profile", r"profile", r"about me", r"personal summary"],
+    "experience": [r"experience", r"work experience", r"professional experience", r"employment history", r"career history", r"relevant experience"],
+    "education": [r"education", r"academic background", r"academic qualifications", r"qualifications"],
+    "skills": [r"skills", r"technical skills", r"technical proficiency", r"proficiencies", r"expertise", r"core competencies"],
+    "projects": [r"projects", r"personal projects", r"academic projects", r"portfolio"],
+    "awards": [r"awards", r"honors", r"recognitions", r"achievements"], # 'achievements' 比较通用，也可能在经验部分
+    "publications": [r"publications", r"research"],
+    "certifications": [r"certifications", r"licenses & certifications", r"certificates"],
+    "languages": [r"languages", r"language proficiency"],
+    "references": [r"references"]
+    # 您可以根据需要添加更多区段和关键词
+}
+
+# 将检测到的标题标准化为统一的键名
+CANONICAL_SECTION_KEYS = {
+    "contact information": "contact_info", "contact details": "contact_info", "personal information": "contact_info", "personal details": "contact_info",
+    "phone": "contact_info", "email": "contact_info", "linkedin": "contact_info", "github": "contact_info",
+    "objective": "summary", "professional profile": "summary", "profile": "summary", "about me": "summary", "personal summary":"summary",
+    "work experience": "experience", "professional experience": "experience", "employment history": "experience", "career history": "experience", "relevant experience":"experience",
+    "academic background": "education", "academic qualifications": "education", "qualifications": "education", # qualifications 也可能指技能
+    "technical skills": "skills", "technical proficiency": "skills", "proficiencies": "skills", "expertise": "skills", "core competencies": "skills",
+    "personal projects": "projects", "academic projects": "projects",
+    "honors": "awards", "recognitions": "awards", # achievements 比较通用
+    "research": "publications",
+    "licenses & certifications": "certifications", "certificates": "certifications",
+    "language proficiency": "languages"
+}
+
+def segment_text_into_sections(raw_text: str) -> Dict[str, str]:
+    """
+    尝试将原始简历文本分割成不同的区段。
+    这是一个基于规则的简单实现。
+    """
+    if not raw_text or not raw_text.strip():
+        return {}
+
+    sections: Dict[str, str] = {}
+    lines = raw_text.splitlines()
+    
+    current_section_key: Optional[str] = None
+    current_section_content: List[str] = []
+    
+    # 构建一个扁平的 (原始标题小写, 标准化键名) 列表，用于匹配
+    header_patterns = []
+    for canonical_key, keywords_list in SECTION_TITLE_KEYWORDS.items():
+        for keyword in keywords_list:
+            # 为每个关键词创建一个不区分大小写的、匹配整行（可带冒号等）的正则表达式模式
+            # ^\s*keyword\s*[:\-\–—]?\s*$
+            # \s* 匹配任意空白符（包括没有）
+            # [:\-\–—]? 匹配可选的冒号或各种破折号
+            # $ 匹配行尾
+            pattern = re.compile(r"^\s*" + re.escape(keyword) + r"\s*[:\-\–—]?\s*$", re.IGNORECASE)
+            header_patterns.append((pattern, CANONICAL_SECTION_KEYS.get(keyword, canonical_key)))
+
+    # 内容开始前的部分，可以放入 "header_details" 或 "unknown_initial"
+    initial_content_key = "unknown_initial"
+
+    for line in lines:
+        cleaned_line = line.strip()
+        
+        matched_section_key: Optional[str] = None
+        for pattern, key in header_patterns:
+            if pattern.fullmatch(cleaned_line): # 使用 fullmatch 确保整行都是标题
+                matched_section_key = key
+                break
+        
+        if matched_section_key:
+            # 找到了新的区段标题
+            if current_section_key and current_section_content: # 保存上一个区段的内容
+                sections[current_section_key] = "\n".join(current_section_content).strip()
+            elif not current_section_key and current_section_content: # 处理第一个区段之前的内容
+                 sections[initial_content_key] = "\n".join(current_section_content).strip()
+
+            current_section_key = matched_section_key
+            current_section_content = [] # 为新区段重置内容
+            # 通常不把标题行本身作为内容，除非标题行也包含信息
+            # 如果标题行也可能包含内容，可以在这里添加： current_section_content.append(cleaned_line)
+        elif cleaned_line: # 非空行且不是标题行
+            current_section_content.append(cleaned_line)
+        elif current_section_key: # 空行，但在一个区段内，保留它以维持段落感
+            current_section_content.append("")
+
+
+    # 保存最后一个区段的内容
+    if current_section_key and current_section_content:
+        sections[current_section_key] = "\n".join(current_section_content).strip()
+    elif not current_section_key and current_section_content: # 如果整个简历都没有匹配到任何标题
+        sections[initial_content_key] = "\n".join(current_section_content).strip()
+
+    # 清理空的 initial_content_key
+    if initial_content_key in sections and not sections[initial_content_key]:
+        del sections[initial_content_key]
+        
+    return sections

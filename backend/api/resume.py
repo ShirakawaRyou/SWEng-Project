@@ -12,10 +12,14 @@ from backend.models.resume import Resume, ResumeCreate, ResumeRead # 确保 Resu
 from backend.core.security import get_current_active_user
 from backend.services.resume_parser import parse_resume_file, generate_pdf_thumbnail
 from backend.config import settings # 导入 settings 用于构建 URL
+import io # 确保导入了 io
+from backend.services.resume_parser import parse_resume_file, generate_pdf_thumbnail, segment_text_into_sections # <--- 导入 segment_text_into_sections
+
 
 
 router = APIRouter()
 
+MAX_RESUMES_PER_USER = 5 # 定义最大简历数量常量
 
 @router.post("/upload", response_model=ResumeRead, status_code=status.HTTP_201_CREATED)
 async def upload_resume(
@@ -23,62 +27,80 @@ async def upload_resume(
     title: Optional[str] = Form(None, description="Optional title for the resume. If not provided, filename will be used."),
     current_user: User = Depends(get_current_active_user)
 ):
-    print(f"Uploaded file content type: {resume_file.content_type}")
+    # ==> 新增：检查用户现有简历数量 <==
+    existing_resumes_count = await Resume.find(Resume.user_id == current_user.id).count()
+    if existing_resumes_count >= MAX_RESUMES_PER_USER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, # 或者 400 Bad Request
+            detail=f"Upload limit reached. You can only upload a maximum of {MAX_RESUMES_PER_USER} resumes."
+        )
+    # ==> 检查结束 <==
+
     if not resume_file.filename:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No filename provided.")
 
-    file_content_bytes = await resume_file.read() # 读取文件内容为 bytes
-    await resume_file.seek(0) # 重置文件指针，因为 parse_resume_file 可能也需要读取
+    file_content_bytes = await resume_file.read()
+    await resume_file.seek(0)
 
     try:
-        # 确保 parse_resume_file 也能处理已经读取过的 UploadFile 对象
-        # 或者传递 file_content_bytes 给一个新的解析函数（如果解析函数也需要 bytes）
-        # 我们当前的 parse_resume_file(file: UploadFile) 会自己 .read()，所以seek(0)是好的
         raw_text = await parse_resume_file(resume_file)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     
-    resume_title = title if title else resume_file.filename
+    # ==> 新增：对原始文本进行区段化解析 <==
+    parsed_sections_data: Dict[str, str] = {} # 默认为空字典
+    if raw_text and raw_text.strip(): # 仅当有原始文本时才尝试区段化
+        try:
+            parsed_sections_data = segment_text_into_sections(raw_text)
+            # 您可以在这里打印日志，看看区段化的效果
+            print(f"[Upload Service] Resume segmented. Found sections: {list(parsed_sections_data.keys())}")
+        except Exception as e_segment:
+            # 即使区段化失败，我们仍然保存原始文本，不中断上传流程
+            print(f"Warning: Error segmenting resume text for {resume_file.filename}: {e_segment}")
+            # parsed_sections_data 将保持为空字典
 
+    resume_title = title if title else resume_file.filename
+    
     thumbnail_data = None
     thumbnail_media_type = None
-    if resume_file.content_type == "application/pdf": # 只为 PDF 生成缩略图
+    if resume_file.content_type == "application/pdf":
         thumbnail_result = await generate_pdf_thumbnail(file_content_bytes)
         if thumbnail_result:
             thumbnail_data, thumbnail_media_type = thumbnail_result
-
 
     resume_doc_data = {
         "title": resume_title,
         "original_file_name": resume_file.filename,
         "user_id": current_user.id,
         "raw_text_content": raw_text,
-        "file_content": file_content_bytes,             # <--- 存储文件内容
-        "file_media_type": resume_file.content_type,  # <--- 存储媒体类型
+        "parsed_sections": parsed_sections_data,  # <--- 存储区段化后的内容
+        "file_content": file_content_bytes,
+        "file_media_type": resume_file.content_type,
+        "thumbnail_content": thumbnail_data,
+        "thumbnail_media_type": thumbnail_media_type,
     }
     
     new_resume = Resume(**resume_doc_data)
     await new_resume.insert()
     
-    # --- 修改返回部分以包含 file_download_url ---
     resume_id_str = str(new_resume.id)
-    file_download_url = f"{settings.API_V1_STR}/resumes/{resume_id_str}/file" # 构建下载链接
-    thumbnail_url = f"{settings.API_V1_STR}/resumes/{resume_id_str}/thumbnail" if new_resume.thumbnail_content else None # <--- 构建缩略图URL
-
+    file_download_url = f"{settings.API_V1_STR}/resumes/{resume_id_str}/file" if new_resume.file_content else None
+    thumbnail_url = f"{settings.API_V1_STR}/resumes/{resume_id_str}/thumbnail" if new_resume.thumbnail_content else None
 
     resume_data_for_read_model = {
         "id": resume_id_str,
-        "user_id": str(new_resume.user_id),
+        "user_id": str(new_resume.user_id), # 确保user_id也是字符串
         "title": new_resume.title,
         "original_file_name": new_resume.original_file_name,
         "raw_text_content": new_resume.raw_text_content,
         "parsed_sections": new_resume.parsed_sections,
         "uploaded_at": new_resume.uploaded_at,
         "updated_at": new_resume.updated_at,
-        "file_download_url": file_download_url, # 添加下载链接
-        "thumbnail_url": thumbnail_url # <--- 添加缩略图 URL
+        "file_download_url": file_download_url,
+        "thumbnail_url": thumbnail_url
     }
     return ResumeRead.model_validate(resume_data_for_read_model)
+
 
 # ... (list_user_resumes, get_resume, delete_resume 端点) ...
 # 您可能也需要在 get_resume 和 list_user_resumes 中进行类似的显式转换

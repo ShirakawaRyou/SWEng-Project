@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     # JWT Token settings
     JWT_SECRET_KEY: str # 将从 .env 文件加载
     JWT_ALGORITHM: str = "HS256" # 可以保留默认值，除非 .env 中有定义
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30 # 可以保留默认值，除非 .env 中有定义
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080 # 可以保留默认值，除非 .env 中有定义
 
     # Gemini API Key
     GEMINI_API_KEY: str # <--- 新增

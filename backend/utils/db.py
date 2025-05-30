@@ -5,6 +5,7 @@ from beanie import init_beanie
 from backend.config import settings
 from backend.models.user import User # 导入 User Document 模型
 from backend.models.resume import Resume # 导入 Resume Document 模型
+from backend.models.processed_jd import ProcessedJD # 导入 ProcessedJD Document 模型
 
 class MongoDB:
     client: AsyncIOMotorClient = None
@@ -58,6 +59,7 @@ async def initialize_database():
         document_models=[
             User,
             Resume,
+            ProcessedJD,  # 添加 ProcessedJD 模型
             # 如果有更多Document模型，在这里添加
         ]
     )
