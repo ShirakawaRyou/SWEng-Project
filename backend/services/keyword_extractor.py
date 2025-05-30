@@ -3,6 +3,8 @@ import spacy
 from spacy.lang.en.stop_words import STOP_WORDS as spacy_stop_words
 from nltk.corpus import stopwords as nltk_stop_words # NLTK 的停用词列表更全一些
 from typing import List, Set
+import re # 导入正则表达式库
+
 
 # 加载 spaCy 的小型英文模型
 try:
@@ -31,8 +33,15 @@ def extract_keywords_from_jd(jd_text: str) -> List[str]:
     """
     if not jd_text:
         return []
+    
+    # ==> 规范化换行符和空白 <==
+    # 1. 将所有类型的换行符 (\r\n, \r, \n) 替换为单个空格
+    processed_jd_text = jd_text.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ')
+    # 2. 使用正则表达式将多个连续的空白符合并为一个空格
+    processed_jd_text = re.sub(r'\s+', ' ', processed_jd_text).strip()
 
-    doc = nlp(jd_text)
+
+    doc = nlp(processed_jd_text)
     keywords: Set[str] = set()
 
     for token in doc:
@@ -56,6 +65,10 @@ def extract_keywords_from_jd(jd_text: str) -> List[str]:
         if cleaned_chunk_parts:
             keywords.add(" ".join(cleaned_chunk_parts).strip())
             
+    for ent in doc.ents: # 如果您使用命名实体
+        if ent.label_ in ["ORG", "PRODUCT", "GPE", "LOC", "LANGUAGE", "WORK_OF_ART"]: # 根据需要调整实体类型
+             keywords.add(ent.text.lower().strip())
+
     # 移除可能混入的空字符串
     keywords.discard("")
     

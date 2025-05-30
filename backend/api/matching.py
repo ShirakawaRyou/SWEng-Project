@@ -1,7 +1,6 @@
 # backend/api/matching.py
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
 from beanie import PydanticObjectId
 
 from backend.models.user import User
@@ -10,16 +9,46 @@ from backend.core.security import get_current_active_user
 from backend.services.keyword_extractor import extract_keywords_from_jd
 from backend.services.matching_service import calculate_match_score
 from backend.services.gemini_service import generate_suggestions_from_gemini # 导入 Gemini 服务
+from datetime import timedelta # 如果使用TTL
+from backend.models.processed_jd import ProcessedJD
+from pydantic import BaseModel, Field, model_validator
+from backend.models.processed_jd import ProcessedJD # 确保导入
+from datetime import timedelta, timezone # 导入 timedelta 和 timezone
+
+
+
 
 
 router = APIRouter()
+
+class JDKeywordResponse(BaseModel): # 新的响应模型
+    jd_id: str # PydanticObjectId 会序列化为 str
+    keywords: List[str]
 
 class JDInput(BaseModel):
     jd_text: str = Field(..., min_length=50, description="The full text of the Job Description.")
 
 class MatchRequest(BaseModel):
-    jd_text: str = Field(..., min_length=50, description="The full text of the Job Description.")
+    jd_text: Optional[str] = Field(None, min_length=50, description="The full text of the Job Description (if jd_id is not provided).")
+    jd_id: Optional[PydanticObjectId] = Field(None, description="The ID of a previously processed Job Description.")
     resume_ids: List[PydanticObjectId] = Field(..., description="A list of resume IDs to match against the JD.")
+    # 添加一个校验器确保 jd_text 或 jd_id 至少有一个被提供
+    # from pydantic import root_validator
+    # @root_validator(pre=False) # Pydantic V1
+    # def check_jd_input(cls, values):
+    #     if not values.get("jd_text") and not values.get("jd_id"):
+    #         raise ValueError("Either jd_text or jd_id must be provided")
+    #     if values.get("jd_text") and values.get("jd_id"):
+    #         raise ValueError("Provide either jd_text or jd_id, not both")
+    #     return values
+    # Pydantic V2 使用 model_validator:
+    @model_validator(mode='after')
+    def check_jd_input(self) -> 'MatchRequest':
+        if not self.jd_text and not self.jd_id:
+            raise ValueError("Either jd_text or jd_id must be provided")
+        if self.jd_text and self.jd_id:
+            raise ValueError("Provide either jd_text or jd_id, not both")
+        return self
 
 class ResumeMatchResult(BaseModel):
     resume_id: str # PydanticObjectId 会被 FastAPI 序列化为 str
@@ -33,12 +62,19 @@ class MatchResponse(BaseModel):
     match_results: List[ResumeMatchResult]
 
 class SuggestionRequest(BaseModel):
-    resume_id: PydanticObjectId = Field(..., description="The ID of the resume to get suggestions for.")
-    job_description_text: str = Field(..., min_length=50, description="The full text of the Job Description.")
-    # 用户可以提供简历中特定的文本片段进行分析，否则使用整个简历的原始文本
-    resume_text_to_analyze: Optional[str] = Field(None, min_length=20, description="Specific section or text from the resume to focus on for improvement. If null, the whole resume's raw text is used.")
-    target_keywords: Optional[List[str]] = Field(None, description="Specific keywords to focus on for improvement.")
-    # custom_prompt_template: Optional[str] = None # 高级功能：允许用户提供自定义提示模板 (暂时移除以简化)
+    jd_text: Optional[str] = Field(default=None, min_length=50, description="The full text of the JD (if jd_id not provided).")
+    jd_id: Optional[PydanticObjectId] = Field(default=None, description="The ID of a previously processed JD.")
+    resume_id: PydanticObjectId
+    resume_text_to_analyze: Optional[str] = Field(None, min_length=20)
+    # target_keywords: Optional[List[str]] = Field(None)
+    # 添加类似的 model_validator
+    @model_validator(mode='after')
+    def check_jd_input(self) -> 'SuggestionRequest':
+        if not self.jd_text and not self.jd_id:
+            raise ValueError("Either jd_text or jd_id must be provided")
+        if self.jd_text and self.jd_id:
+            raise ValueError("Provide either jd_text or jd_id, not both")
+        return self
 
 class SuggestionResponse(BaseModel):
     resume_id: str
@@ -47,16 +83,24 @@ class SuggestionResponse(BaseModel):
 
 
 
-@router.post("/extract-jd-keywords", response_model=List[str])
+@router.post("/extract-jd-keywords", response_model=JDKeywordResponse) # 修改响应模型
 async def api_extract_jd_keywords(jd_input: JDInput):
-    """
-    接收职位描述文本并提取关键词.
-    """
     if not jd_input.jd_text.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job description text cannot be empty.")
-    
+
     keywords = extract_keywords_from_jd(jd_input.jd_text)
-    return keywords
+
+    # 设置过期时间为从现在起24小时后
+    expiration_time = datetime.now(timezone.utc) + timedelta(hours=24) # 使用带时区的UTC时间
+
+    processed_jd_doc = ProcessedJD(
+        jd_text=jd_input.jd_text, 
+        keywords=keywords,
+        expire_at=expiration_time # <--- 设置过期时间
+    )
+    await processed_jd_doc.insert()
+    
+    return JDKeywordResponse(jd_id=str(processed_jd_doc.id), keywords=keywords)
 
 
 @router.post("/match-resumes", response_model=MatchResponse)
@@ -68,17 +112,30 @@ async def api_match_resumes_with_jd(
     接收职位描述和简历ID列表，计算匹配度.
     用户必须已登录.
     """
-    if not request_data.jd_text.strip():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job description text cannot be empty.")
+    final_jd_text = ""
+    jd_keywords: List[str] = []
+
+    if request_data.jd_id:
+        processed_jd_doc = await ProcessedJD.get(request_data.jd_id)
+        if not processed_jd_doc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Processed JD not found for the given jd_id.")
+        final_jd_text = processed_jd_doc.jd_text
+        jd_keywords = processed_jd_doc.keywords
+    elif request_data.jd_text:
+        final_jd_text = request_data.jd_text
+        if not final_jd_text.strip(): # 确保不为空
+             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job description text cannot be empty.")
+        jd_keywords = extract_keywords_from_jd(final_jd_text)
+    else:
+        # 这个情况应该被 Pydantic model_validator 捕获
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No JD input provided.")
+
     if not request_data.resume_ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Resume IDs list cannot be empty.")
 
-    # 1. 提取JD关键词
-    jd_keywords = extract_keywords_from_jd(request_data.jd_text)
     if not jd_keywords: # 如果JD没有提取出任何关键词
         # 返回空的关键词列表和空的匹配结果，或者一个特定的提示
         return MatchResponse(job_description_keywords=[], match_results=[])
-
 
     match_results: List[ResumeMatchResult] = []
 
@@ -87,8 +144,6 @@ async def api_match_resumes_with_jd(
         if not resume_doc:
             # 如果某个简历ID无效，可以选择跳过，或抛出错误，或在结果中标记
             # 这里我们选择跳过，并在结果中不包含它
-            # 也可以收集错误信息：
-            # match_results.append(ResumeMatchResult(resume_id=str(resume_id), resume_title="Not Found", match_score=-1.0))
             print(f"Warning: Resume with ID {resume_id} not found.")
             continue 
         
@@ -123,22 +178,19 @@ async def api_match_resumes_with_jd(
 # backend/api/matching.py
 # ... (router 和之前的端点) ...
 
+# backend/api/matching.py
+# ...
 @router.post("/suggestions", response_model=SuggestionResponse)
 async def get_resume_improvement_suggestions(
     request_data: SuggestionRequest,
-    current_user: User = Depends(get_current_active_user) # 确保用户已登录
+    current_user: User = Depends(get_current_active_user)
 ):
-    """
-    为指定的简历和职位描述生成改进建议.
-    """
     resume_doc = await Resume.get(request_data.resume_id)
     if not resume_doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found.")
-
     if resume_doc.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this resume.")
 
-    # 确定用于分析的简历文本
     text_to_analyze = ""
     if request_data.resume_text_to_analyze:
         text_to_analyze = request_data.resume_text_to_analyze
@@ -147,19 +199,38 @@ async def get_resume_improvement_suggestions(
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Resume has no text content to analyze, and no specific text was provided.")
 
+    # ==> 获取 JD 文本和关键词 <==
+    final_jd_text = ""
+    retrieved_jd_keywords: List[str] = []
+
+    if request_data.jd_id:
+        processed_jd_doc = await ProcessedJD.get(request_data.jd_id)
+        if not processed_jd_doc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Processed JD not found for the given jd_id.")
+        final_jd_text = processed_jd_doc.jd_text
+        retrieved_jd_keywords = processed_jd_doc.keywords
+    elif request_data.jd_text: # jd_id 没提供，但 jd_text 提供了
+        final_jd_text = request_data.jd_text
+        if not final_jd_text.strip():
+             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job description text cannot be empty.")
+        retrieved_jd_keywords = extract_keywords_from_jd(final_jd_text) # 动态提取
+    else:
+        # 此情况应被 Pydantic model_validator 捕获
+         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No JD input (jd_id or jd_text) provided.")
+
+
     # 构建发送给 Gemini 的 Prompt
     keywords_focus_str = "relevant keywords from the job description"
-    if request_data.target_keywords:
-        keywords_focus_str = "the following specific keywords: " + ", ".join(request_data.target_keywords)
+    if retrieved_jd_keywords: # <--- 使用从数据库获取或动态提取的关键词
+        keywords_focus_str = "the following specific keywords: " + ", ".join(retrieved_jd_keywords)
 
-    # 您可以在这里迭代和优化您的 Prompt
     prompt_template = f"""
     You are an expert AI career advisor and resume optimization specialist.
     Your goal is to provide actionable, specific, and constructive suggestions to improve the provided resume text so it aligns better with the given job description, particularly focusing on incorporating {keywords_focus_str}.
 
     Job Description (JD):
     ---
-    {request_data.job_description_text}
+    {final_jd_text} 
     ---
 
     Resume Text to Improve:
@@ -168,8 +239,8 @@ async def get_resume_improvement_suggestions(
     ---
 
     Please provide detailed suggestions for improvement. Consider the following:
-    1.  Identify key skills, experiences, and qualifications from the JD that are missing or underrepresented in the resume text.
-    2.  Suggest how to rephrase sentences or bullet points in the resume text to naturally integrate {keywords_focus_str} or related concepts from the JD.
+    1.  Identify key skills, experiences, and qualifications from the JD that are missing or underrepresented in the resume text, focusing on the keywords: {", ".join(retrieved_jd_keywords) if retrieved_jd_keywords else "general JD requirements"}.
+    2.  Suggest how to rephrase sentences or bullet points in the resume text to naturally integrate these keywords or related concepts from the JD.
     3.  Recommend adding specific, quantifiable achievements or examples where possible, if relevant to the JD and the user's likely experience.
     4.  Ensure suggestions help maintain a professional tone and are grammatically correct.
     5.  Do NOT invent new experiences or skills for the user. Suggestions should be about better presenting existing qualifications or highlighting transferable skills.
@@ -177,14 +248,12 @@ async def get_resume_improvement_suggestions(
 
     Provide your improvement suggestions below:
     """
+    final_prompt = prompt_template.strip()
 
-    final_prompt = prompt_template.strip() # 移除可能的前后空白
-
-    # 调用 Gemini 服务
     generated_suggestions = await generate_suggestions_from_gemini(prompt=final_prompt)
 
     return SuggestionResponse(
         resume_id=str(request_data.resume_id),
         suggestions=generated_suggestions,
-        prompt_used=final_prompt # 返回实际使用的prompt，方便调试
+        prompt_used=final_prompt
     )
