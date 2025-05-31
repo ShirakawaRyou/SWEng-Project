@@ -29,7 +29,7 @@
     </ul>
   </div>
   <div>
-    <button @click="fetchData">获取数据</button>
+    <button @click="fetchData">Fetch Data</button>
     <div>{{ message }}</div>
   </div>
 </template>

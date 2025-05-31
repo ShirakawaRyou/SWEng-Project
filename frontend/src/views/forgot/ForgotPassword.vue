@@ -6,14 +6,14 @@
       </label>
       <input class="email-input" type="email" v-model="email" placeholder="Enter your email address" />
       <div class="verify-section">
-        <label class="verify-label">请输入发送到邮箱的验证码</label>
+        <label class="verify-label">Please enter the verification code sent to your email</label>
         <div class="verify-box code-section">
-          <input v-model="verificationCode" type="text" class="code-input" placeholder="请输入验证码" />
+          <input v-model="verificationCode" type="text" class="code-input" placeholder="Please enter the verification code" />
           <button class="send-code-btn" :disabled="!email || codeSent" @click="sendVerificationCode">
-            {{ codeSent ? countdown + 's后重发' : '发送验证码' }}
+            {{ codeSent ? 'Resend in ' + countdown + 's' : 'Send verification code' }}
           </button>
         </div>
-        <button class="verify-btn" :disabled="!verificationCode" @click="verifyCode">验证验证码</button>
+        <button class="verify-btn" :disabled="!verificationCode" @click="verifyCode">Verify Code</button>
       </div>
       <button class="send-btn" :disabled="!email">Send password reset email</button>
     </div>

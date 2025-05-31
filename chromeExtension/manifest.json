@@ -6,16 +6,16 @@
     "activeTab",
     "scripting",
     "storage",
-    "webRequest",
-    "webRequestBlocking"
+    "webRequest"
   ],
   "host_permissions": [
     "*://*.linkedin.com/*",
-    "*://linkedin.com/*"
+    "*://linkedin.com/*",
+    "http://localhost:8000/*"
   ],
   "web_accessible_resources": [
     {
-      "resources": ["image/default-avatar.png"],
+      "resources": ["image/default-avatar-icon.png","sidebar.css","styles.css"],
       "matches": ["*://*.linkedin.com/*", "*://linkedin.com/*"]
     }
   ],
@@ -25,6 +25,11 @@
       "js": ["sidebarTemplate.js", "sidebar.js"],
       "css": ["styles.css", "sidebar.css"],
       "run_at": "document_start"
+    },
+    {
+      "matches": ["http://localhost:8080/*"],
+      "js": ["frontStorageSync.js"],
+      "run_at": "document_idle"
     }
   ],
   "background": {
@@ -34,7 +39,7 @@
     "default_icon": {
       
     },
-    "default_title": "切换顶部侧边栏"
+    "default_title": "Rate Your Resume"
   },
   "icons": {
     

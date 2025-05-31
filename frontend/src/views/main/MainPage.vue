@@ -2,23 +2,20 @@
   <div class="main-page">
     <div class="sidebar">
       <div class="personal-info" v-if="currentUser">
-        <h3>个人信息</h3>
-        <p>账号名称：{{ currentUser.full_name || currentUser.email }}</p>
-        <p>邮箱：{{ currentUser.email }}</p>
+        <h3>Personal Information</h3>
+        <p>Account Name: {{ currentUser.full_name || currentUser.email }}</p>
+        <p>Email: {{ currentUser.email }}</p>
+        <button @click="handleLogout">Log out</button>
       </div>
     </div>
     <div class="resume-container">
       <!-- 顶部栏 -->
       <div class="resume-header">
         <h2>Resume Library</h2>
-        <span class="menu-icon" @click="toggleHeaderMenu">⋮</span>
-        <div v-if="showHeaderMenu" class="header-menu">
-          <div class="menu-item" @click="startMultiSelect">多选</div>
-        </div>
       </div>
       <!-- 网格布局 -->
       <div class="resume-grid">
-        <input type="file" ref="fileInput" style="display:none" @change="handleFileChange" />
+        <input type="file" ref="fileInput" accept="application/pdf" style="display:none" @change="handleFileChange" />
         <div class="resume-item" v-for="resume in resumes" :key="resume.id">
           <div class="resume-card">
             <img :src="getThumbnail(resume.thumbnail)" alt="Resume Thumbnail" />
@@ -46,7 +43,7 @@
           <div class="resume-card add-new">
             <div class="plus-icon">+</div>
           </div>
-          <p class="resume-title add-new-text">添加新简历</p>
+          <p class="resume-title add-new-text">Add New Resume</p>
         </div>
       </div>
     </div>
@@ -72,7 +69,7 @@ export default {
     // 设置认证头~
     const token = localStorage.getItem('access_token');
     if (!token) {
-      this.error = '请先登录';
+      this.error = 'Please login first';
       this.$router.push({ name: 'Login' });
       return;
     }
@@ -84,51 +81,46 @@ export default {
     this.fetchResumes();
   },
   methods: {
+    handleLogout() {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('current_user');
+      this.$router.push({ name: 'Login' });
+    },
     toggleHeaderMenu() {
       this.showHeaderMenu = !this.showHeaderMenu;
     },
-    startMultiSelect() {
-      this.multiSelectMode = true;
-      this.showHeaderMenu = false;
-    },
     triggerFileUpload() {
       this.$refs.fileInput.click();
-    },
-    formatRelativeTime(timestamp) {
-      if (!timestamp) return '';
-      const diff = Date.now() - new Date(timestamp).getTime();
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      if (days === 0) return 'today';
-      if (days === 1) return 'yesterday';
-      return days + ' days ago';
     },
     async fetchResumes() {
       try {
         const resp = await axios.get('/api/v1/resumes/');
         this.resumes = resp.data;
+        console.log('侧边栏加载完成：', { currentUser: this.currentUser, resumes: this.resumes });
       } catch (e) {
-        console.error('无法获取简历列表', e);
-        this.error = '无法加载简历';
+        console.error('cannot get resumes', e);
+        this.error = 'cannot get resumes';
       }
     },
     async handleFileChange(event) {
       const file = event.target.files[0];
       if (!file) return;
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('resume_file', file);
       try {
         const resp = await axios.post('/api/v1/resumes/upload', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
         this.resumes.push(resp.data);
+        alert('Uploaded successfully');
       } catch (e) {
-        console.error('上传失败', e);
+        console.error('Upload resume failed', e);
       } finally {
         event.target.value = '';
       }
     },
     downloadResume(id) {
-      axios.get(`/api/v1/resumes/${id}`, { responseType: 'blob' })
+      axios.get(`/api/v1/resumes/${id}/file`, { responseType: 'blob' })
         .then(res => {
           const url = window.URL.createObjectURL(new Blob([res.data]));
           const link = document.createElement('a');
@@ -140,14 +132,26 @@ export default {
         });
     },
     previewResume(id) {
-      window.open(`/api/v1/resumes/${id}`, '_blank');
+      // 使用 axios 获取 PDF 二进制流，携带认证头
+      axios.get(`/api/v1/resumes/${id}/file`, { responseType: 'blob' })
+        .then(res => {
+          const blob = new Blob([res.data], { type: res.headers['content-type'] });
+          const url = window.URL.createObjectURL(blob);
+          window.open(url, '_blank');
+          // 可选：在适当时机释放 URL
+          // setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+        })
+        .catch(err => {
+          console.error('Preview resume failed', err);
+          alert('预览失败，请检查登录状态或网络连接');
+        });
     },
     async deleteResume(id) {
       try {
         await axios.delete(`/api/v1/resumes/${id}`);
         this.resumes = this.resumes.filter(r => r.id !== id);
       } catch (e) {
-        console.error('删除失败', e);
+        console.error('Delete resume failed', e);
       }
     },
     getThumbnail(src) {

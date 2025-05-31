@@ -1,33 +1,36 @@
 // sidebar.js
 (function() {
-  // 动态注入侧边栏样式表和通用样式
-  const styleLink1 = document.createElement('link');
-  styleLink1.rel = 'stylesheet';
-  styleLink1.href = chrome.runtime.getURL('sidebar.css');
-  document.head.appendChild(styleLink1);
-  const styleLink2 = document.createElement('link');
-  styleLink2.rel = 'stylesheet';
-  styleLink2.href = chrome.runtime.getURL('styles.css');
-  document.head.appendChild(styleLink2);
-  // 动态注入 Material Icons 字体
-  const iconFontLink = document.createElement('link');
-  iconFontLink.rel = 'stylesheet';
-  iconFontLink.href = 'https://fonts.googleapis.com/icon?family=Material+Icons';
-  document.head.appendChild(iconFontLink);
-
-  // Remove elements that wrongly try to load 'invalid/' to suppress repeated errors
+  // Remove elements with bad src/href values (invalid, recommended, or unknown protocols)
   function removeInvalidResources() {
     ['src','href'].forEach(attr => {
-      document.querySelectorAll('[' + attr + '="invalid/"]').forEach(el => {
-        el.removeAttribute(attr);
+      document.querySelectorAll(`[${attr}]`).forEach(el => {
+        const val = el.getAttribute(attr);
+        if (!val) return;
+        // 包含 invalid 或 recommended 开头，或协议不是 http(s) 或 chrome-extension
+        if (
+          val.includes('invalid') ||
+          val.startsWith('recommended://') ||
+          (/^[a-z]+:\/\//.test(val) && !val.startsWith('http://') && !val.startsWith('https://') && !val.startsWith('chrome-extension://'))
+        ) {
+          el.removeAttribute(attr);
+        }
       });
     });
   }
-  // Run removal once DOM is ready
+  // 持续监测并移除后续插入的错误资源
+  function observeInvalidResources() {
+    const observer = new MutationObserver(removeInvalidResources);
+    observer.observe(document.documentElement, { attributes: true, subtree: true, attributeFilter: ['src','href'] });
+  }
+  // 运行移除和监测
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', removeInvalidResources, { once: true });
+    document.addEventListener('DOMContentLoaded', () => {
+      removeInvalidResources();
+      observeInvalidResources();
+    }, { once: true });
   } else {
     removeInvalidResources();
+    observeInvalidResources();
   }
 
   // 设置登录表单提交处理
@@ -41,40 +44,56 @@
       const params = new URLSearchParams();
       params.append('username', username);
       params.append('password', password);
-      fetch('http://localhost:8000/api/v1/auth/login/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params
-      }).then(response => {
-        if (response.ok) {
-          response.json().then(data => {
-            const token = data.access_token;
-            // 缓存 accessToken
-            chrome.storage.local.set({ accessToken: token }, () => {
-              // 获取并缓存用户信息
-              fetch('http://localhost:8000/api/v1/auth/users/me', {
-                headers: { 'Authorization': `Bearer ${token}` }
-              })
-              .then(res => res.json())
-              .then(user => {
-                chrome.storage.local.set({ currentUser: user }, () => {
-                  alert('登录成功');
-                  toggleSidebar();
-                });
-              })
-              .catch(err => {
-                console.error('获取用户信息失败', err);
+      // 通过后台脚本执行登录，以解决混合内容和 CORS 问题
+      chrome.runtime.sendMessage({ action: 'do_login', username, password }, loginRes => {
+        console.log('[Sidebar] do_login response:', loginRes);
+        if (chrome.runtime.lastError || !loginRes) {
+          console.error('Message error:', chrome.runtime.lastError);
+          alert('网络错误，请稍后重试');
+          return;
+        }
+        if (loginRes.success) {
+          const token = loginRes.accessToken;
+          chrome.storage.local.set({ accessToken: token }, () => {
+            // 获取并缓存用户信息
+            chrome.runtime.sendMessage({ action: 'get_user', accessToken: token }, userRes => {
+              console.log('[Sidebar] get_user response:', userRes);
+              if (chrome.runtime.lastError || !userRes) {
+                console.error('Message error:', chrome.runtime.lastError);
                 alert('登录成功，但无法获取用户信息');
                 toggleSidebar();
-              });
+                return;
+              }
+              if (userRes.success) {
+                const user = userRes.user;
+                chrome.storage.local.set({ currentUser: user }, () => {
+                  console.log('登录成功', user);
+                  // 渲染主侧边栏模板
+                  const sidebarEl = document.getElementById('my-extension-sidebar');
+                  sidebarEl.innerHTML = getSidebarHTML();
+                  const ratingSection = sidebarEl.querySelector('#my-extension-rating-section');
+                  if (ratingSection) initialRatingHTML = ratingSection.innerHTML;
+                  const collapseBtn = sidebarEl.querySelector('#my-extension-collapse-btn');
+                  if (collapseBtn) collapseBtn.addEventListener('click', e => { e.stopPropagation(); toggleSidebar(); });
+                  checkLoginStatus();
+                  updateSidebarMessageBasedOnURL();
+                  fetchSidebarData();
+                });
+              } else {
+                console.error('获取用户信息失败', userRes.error);
+                alert('登录成功，但无法获取用户信息');
+                toggleSidebar();
+              }
             });
           });
         } else {
-          alert('登录失败，请检查用户名和密码');
+          if (loginRes.error === 'credentials') {
+            alert('登录失败，请检查邮箱和密码');
+          } else {
+            console.error('登录请求失败', loginRes.error);
+            alert('网络错误，请稍后重试');
+          }
         }
-      }).catch(err => {
-        console.error('登录请求失败', err);
-        alert('网络错误，请稍后重试');
       });
     });
   }
@@ -82,41 +101,18 @@
   let sidebar;
   const SIDEBAR_WIDTH_VAR = '--my-extension-sidebar-width'; // 定义CSS变量名
   let toggleButton; //新增浮于页面的按钮
+  let initialRatingHTML = '';
 
   function createToggleButton() {
     if (document.getElementById('my-extension-sidebar-toggle')) return;
 
     toggleButton = document.createElement('div');
     toggleButton.id = 'my-extension-sidebar-toggle';
-    // 确保 material-icons 字体样式可用
-    if (!document.getElementById('my-extension-material-icons-style')) {
-      const style = document.createElement('style');
-      style.id = 'my-extension-material-icons-style';
-      style.textContent = `
-        @font-face {
-          font-family: 'Material Icons';
-          font-style: normal;
-          font-weight: 400;
-          src: url(data:font/woff2;base64,d09GMgABAAAAAAWcABAAAAAA...) format('woff2'); /* 这里请替换为完整的base64字体 */
-        }
-        .material-icons {
-          font-family: 'Material Icons', sans-serif;
-          font-weight: normal;
-          font-style: normal;
-          font-size: 24px;
-          line-height: 1;
-          letter-spacing: normal;
-          text-transform: none;
-          display: inline-block;
-          white-space: nowrap;
-          direction: ltr;
-          -webkit-font-feature-settings: 'liga';
-          -webkit-font-smoothing: antialiased;
-        }
-      `;
-      document.head.appendChild(style);
-    }
-    toggleButton.innerHTML = '<span class="material-icons">navigate_before</span>';
+    toggleButton.innerHTML = `
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M14 18L8 12L14 6L15.4 7.4L10.8 12L15.4 16.6L14 18Z" fill="#1D1B20"/>
+      </svg>
+    `;
     toggleButton.title = '打开侧边栏';
 
     // 将按钮直接添加到 body
@@ -184,14 +180,27 @@
 
     sidebar = document.createElement('div');
     sidebar.id = 'my-extension-sidebar';
-    // 使用 sidebarTemplate.js 中的模板
+    // 渲染侧边栏模板
     sidebar.innerHTML = getSidebarHTML();
+
+    // 捕获初始评分框 HTML 以便恢复
+    const ratingSection = sidebar.querySelector('#my-extension-rating-section');
+    if (ratingSection) {
+      initialRatingHTML = ratingSection.innerHTML;
+    }
 
     const setupDOMElements = () => {
       if (document.body) {
         document.body.insertBefore(sidebar, document.body.firstChild);
         createToggleButton();
-        setupLoginForm();  // 初始化登录表单事件
+        // 为收起按钮绑定点击事件
+        const collapseBtn = document.getElementById('my-extension-collapse-btn');
+        if (collapseBtn) {
+          collapseBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            toggleSidebar();
+          });
+        }
       } else {
         document.addEventListener('DOMContentLoaded', setupDOMElements, { once: true });
       }
@@ -215,7 +224,12 @@
 
     sidebar.classList.toggle('my-extension-sidebar-expanded');
     if (sidebar.classList.contains('my-extension-sidebar-expanded')) {
+      // 先通过后台打开前端页面，触发 frontStorageSync 同步 localStorage
+      chrome.runtime.sendMessage({ action: 'open_front_sync' });
       checkLoginStatus();
+      updateSidebarMessageBasedOnURL();
+      // 延迟获取数据，确保同步完成
+      setTimeout(fetchSidebarData, 1500);
     }
     
     // 直接控制按钮的显示和隐藏
@@ -247,20 +261,8 @@
 
   // 脚本加载时立即尝试创建（隐藏的）侧边栏
   sidebar = createSidebar();
-  // 初始化时检查登录状态，显示合适的图标或文字
   checkLoginStatus();
-  // 新增：为收起按钮添加点击事件
-  const collapseBtn = document.getElementById('my-extension-collapse-btn');
-  if (collapseBtn) {
-    collapseBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleSidebar();
-    });
-  }
-  // 添加日志确认
-  if (sidebar) {
-    console.log("Right-side sidebar element created on load.");
-  } else {
+  if (!sidebar) {
     console.error("Right-side sidebar element NOT created on load.");
   }
 
@@ -272,9 +274,10 @@
     }
   });
 
-  // 为账户按钮添加点击事件，根据本地 token 校验后跳转
+  // 为账户按钮添加点击事件，根据本地 token 校验后跳转（只绑定一次）
   const accountBtn = document.getElementById('my-extension-account-btn');
-  if (accountBtn) {
+  if (accountBtn && !accountBtn.dataset.handlerBound) {
+    accountBtn.dataset.handlerBound = 'true';
     accountBtn.addEventListener('click', (e) => {
       e.preventDefault();
       chrome.storage.local.get(['accessToken'], ({ accessToken }) => {
@@ -282,38 +285,70 @@
           window.open('http://localhost:8080/login', '_blank');
           return;
         }
-        fetch('http://localhost:8000/api/v1/auth/users/me', {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        })
-        .then(res => {
-          if (res.ok) {
+        chrome.runtime.sendMessage({ action: 'get_user', accessToken }, (userRes) => {
+          if (chrome.runtime.lastError || !userRes) {
+            console.error('Message error:', chrome.runtime.lastError);
+            chrome.storage.local.remove(['accessToken']);
+            window.open('http://localhost:8080/login', '_blank');
+            return;
+          }
+          if (userRes.success) {
             window.open('http://localhost:8080/main', '_blank');
           } else {
             chrome.storage.local.remove(['accessToken']);
             window.open('http://localhost:8080/login', '_blank');
           }
-        })
-        .catch(err => {
-          console.error('检查登录状态失败', err);
-          window.open('http://localhost:8080/login', '_blank');
         });
       });
     });
   }
 
-  // 简化：检查登录状态，仅切换按钮文本
+  // 检查登录状态：始终显示默认头像
   function checkLoginStatus() {
     const accountBtn = document.getElementById('my-extension-account-btn');
-    // 优先从 localStorage 获取 token，保证网页端登录后侧边栏能同步
-    const token = window.localStorage.getItem('access_token');
-    if (token) {
-      accountBtn.textContent = 'Account';
+    if (!accountBtn) return;
+    const avatarUrl = chrome.runtime.getURL('image/default-avatar-icon.png');
+    accountBtn.innerHTML = `<div class="my-extension-account-avatar" style="background-image:url('${avatarUrl}')"></div>`;
+  }
+
+  // 根据 URL 判断并更新侧边栏主体内容
+  function updateSidebarMessageBasedOnURL() {
+    const ratingSectionEl = document.getElementById('my-extension-rating-section');
+    if (!ratingSectionEl) return;
+    const url = window.location.href;
+    // 如果不在 jobs/collections 或 jobs/search 页面，显示一行提示文字
+    if (!url.startsWith('https://www.linkedin.com/jobs/collections') && !url.startsWith('https://www.linkedin.com/jobs/search')) {
+      ratingSectionEl.innerHTML = '<p>请点开具体的职位以查看评分</p>';
     } else {
-      // 若 localStorage 没有，再查扩展存储
-      chrome.storage.local.get(['accessToken'], ({ accessToken }) => {
-        accountBtn.textContent = accessToken ? 'Account' : 'Login';
-      });
+      // 否则恢复原始评分框内容
+      ratingSectionEl.innerHTML = initialRatingHTML;
     }
+  }
+
+  // 获取侧边栏数据：用户信息和简历列表
+  function fetchSidebarData() {
+    chrome.storage.local.get(['accessToken','currentUser'], ({ accessToken, currentUser }) => {
+      console.log('[Sidebar] fetchSidebarData accessToken:', accessToken, 'currentUser:', currentUser);
+      if (!accessToken) {
+        console.warn('未登录，跳过获取简历列表');
+        return;
+      }
+      // TODO: 渲染用户信息到侧边栏
+
+      chrome.runtime.sendMessage({ action: 'fetch_resumes', accessToken }, (res) => {
+        console.log('[Sidebar] fetch_resumes response:', res);
+        if (chrome.runtime.lastError || !res) {
+          console.error('获取简历列表失败', chrome.runtime.lastError);
+          return;
+        }
+        if (res.success) {
+          const resumes = res.resumes;
+          // TODO: 渲染简历列表到侧边栏
+        } else {
+          console.error('获取简历列表失败', res.error);
+        }
+      });
+    });
   }
 
   // 注入 SPA 路由监听，确保在 pushState/replaceState/popstate 后自动初始化或重置侧边栏
@@ -321,12 +356,6 @@
     const pushState = history.pushState;
     history.pushState = function(state, title, url) {
       const ret = pushState.apply(this, arguments);
-      window.dispatchEvent(new Event('locationchange'));
-      return ret;
-    };
-    const replaceState = history.replaceState;
-    history.replaceState = function(state, title, url) {
-      const ret = replaceState.apply(this, arguments);
       window.dispatchEvent(new Event('locationchange'));
       return ret;
     };
@@ -341,5 +370,4 @@
       if (toggleButton) toggleButton.style.display = 'flex';
     }
   });
-
 })();

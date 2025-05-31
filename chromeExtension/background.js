@@ -1,15 +1,15 @@
 // background.js
 
 // 拦截所有包含 /invalid/ 的网络请求，避免资源加载错误
-chrome.webRequest.onBeforeRequest.addListener(
-  details => {
-    if (details.url.includes('/invalid/')) {
-      return { cancel: true };
-    }
-  },
-  { urls: ['<all_urls>'] },
-  ['blocking']
-);
+// chrome.webRequest.onBeforeRequest.addListener(
+//   details => {
+//     if (details.url.includes('/invalid/')) {
+//       return { cancel: true };
+//     }
+//   },
+//   { urls: ['<all_urls>'] },
+//   ['blocking']
+// );
 
 chrome.action.onClicked.addListener((tab) => {
   if (!tab.id) {
@@ -44,5 +44,93 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url && /https?:\/\/(www\.)?linkedin\.com/.test(tab.url)) {
     chrome.scripting.insertCSS({ target: { tabId }, files: ['styles.css','sidebar.css'] });
     chrome.scripting.executeScript({ target: { tabId }, files: ['sidebarTemplate.js','sidebar.js'] });
+  }
+});
+
+// 监听来自内容脚本的 API 请求消息
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  console.log('[Background] Received message:', msg);
+  if (msg.action === 'do_login') {
+    console.log('[Background] Action: do_login, username:', msg.username);
+    const params = new URLSearchParams();
+    params.append('username', msg.username);
+    params.append('password', msg.password);
+    fetch('http://localhost:8000/api/v1/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: params
+    })
+      .then(res => {
+        console.log('[Background] do_login raw response status:', res.status);
+        return res.json();
+      })
+      .then(data => {
+        console.log('[Background] do_login data:', data);
+        if (data.access_token) {
+          sendResponse({success: true, accessToken: data.access_token});
+        } else {
+          sendResponse({success: false, error: data.detail || '登录失败'});
+        }
+      })
+      .catch(err => {
+        console.error('[Background] do_login error:', err);
+        sendResponse({success: false, error: err.message});
+      });
+    return true;
+  } else if (msg.action === 'get_user') {
+    console.log('[Background] Action: get_user, token:', msg.accessToken);
+    fetch('http://localhost:8000/api/v1/auth/users/me', {
+      headers: {'Authorization': `Bearer ${msg.accessToken}`}
+    })
+      .then(res => {
+        console.log('[Background] get_user raw response status:', res.status);
+        if (!res.ok) {
+          return res.json().then(errorData => { throw new Error(errorData.detail || `HTTP error! status: ${res.status}`); }).catch(() => { throw new Error(`HTTP error! status: ${res.status}`); });
+        }
+        return res.json();
+      })
+      .then(data => {
+        console.log('[Background] get_user data:', data);
+        sendResponse({success: true, user: data});
+      })
+      .catch(err => {
+        console.error('[Background] get_user error:', err);
+        sendResponse({success: false, error: err.message});
+      });
+    return true;
+  } else if (msg.action === 'fetch_resumes') {
+    console.log('[Background] Action: fetch_resumes, token:', msg.accessToken);
+    fetch('http://localhost:8000/api/v1/resumes', {
+      headers: {'Authorization': `Bearer ${msg.accessToken}`}
+    })
+      .then(res => {
+        console.log('[Background] fetch_resumes raw response status:', res.status);
+        return res.json();
+      })
+      .then(data => {
+        console.log('[Background] fetch_resumes data:', data);
+        sendResponse({success: true, resumes: data});
+      })
+      .catch(err => {
+        console.error('[Background] fetch_resumes error:', err);
+        sendResponse({success: false, error: err.message});
+      });
+    return true;
+  } else if (msg.action === 'open_front_sync') {
+    // 在后台打开前端页面以触发 frontStorageSync，同步 localStorage
+    chrome.tabs.create({ url: 'http://localhost:8080', active: false }, (tab) => {
+      const tabId = tab.id;
+      function handleUpdate(updatedTabId, changeInfo) {
+        if (updatedTabId === tabId && changeInfo.status === 'complete') {
+          // 等待脚本运行完成后关闭标签页
+          setTimeout(() => {
+            chrome.tabs.remove(tabId);
+          }, 1000);
+          chrome.tabs.onUpdated.removeListener(handleUpdate);
+        }
+      }
+      chrome.tabs.onUpdated.addListener(handleUpdate);
+    });
+    return false;
   }
 });
