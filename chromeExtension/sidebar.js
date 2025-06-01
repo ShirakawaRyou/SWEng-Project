@@ -232,6 +232,8 @@
       }
       checkLoginStatus();
       updateSidebarMessageBasedOnURL();
+      // 显示职位名称
+      displayJobTitle();
       // 显示页面上的职位描述
       displayJobDescription();
       // 延迟获取简历列表，确保同步完成
@@ -324,7 +326,7 @@
     const url = window.location.href;
     // 如果不在 jobs/collections 或 jobs/search 页面，显示一行提示文字
     if (!url.startsWith('https://www.linkedin.com/jobs/collections') && !url.startsWith('https://www.linkedin.com/jobs/search')) {
-      ratingSectionEl.innerHTML = '<p>请点开具体的职位以查看评分</p>';
+      ratingSectionEl.innerHTML = '<p>Please open a specific job to view ratings</p>';
     } else {
       // 否则恢复原始评分框内容
       ratingSectionEl.innerHTML = initialRatingHTML;
@@ -378,14 +380,32 @@
               return;
             }
             const results = matchRes.data.match_results;
-            // 将得分渲染到评分框
-            const ratingBoxes = document.querySelectorAll('#my-extension-rating-section .my-extension-rating-box');
-            ratingBoxes.forEach((box, idx) => {
-              if (results[idx]) {
-                box.innerText = results[idx].match_score.toFixed(2);
-              } else {
-                box.innerText = 'N/A';
-              }
+            // 按 match_score 降序排列
+            results.sort((a, b) => b.match_score - a.match_score);
+            // 渲染分数框
+            const ratingSection = document.getElementById('my-extension-rating-section');
+            ratingSection.innerHTML = '';
+            // 限制最多显示5个分数框
+            results.slice(0, 5).forEach(res => {
+              const box = document.createElement('div');
+              box.className = 'my-extension-rating-box';
+              // 圆形进度图表示匹配得分
+              const score = res.match_score;
+              const percent = Math.min(Math.max(score, 0), 100);
+              const scoreText = score.toFixed(2);
+              box.innerHTML = `
+                <svg viewBox="0 0 36 36" class="circular-chart">
+                  <path class="circle-bg" d="M18 2.0845
+a 15.9155 15.9155 0 1 1 0 31.831
+a 15.9155 15.9155 0 1 1 0 -31.831"/>
+                  <path class="circle" stroke-dasharray="${percent},100" d="M18 2.0845
+a 15.9155 15.9155 0 1 1 0 31.831
+a 15.9155 15.9155 0 1 1 0 -31.831"/>
+                  <text x="18" y="20.35" class="percentage">${scoreText}</text>
+                </svg>
+                <div class="rating-title">${res.resume_title}</div>
+              `;
+              ratingSection.appendChild(box);
             });
             console.log('[Sidebar] >>> Scores rendered:', results);
           });
@@ -439,19 +459,51 @@
       .join('\n');
   }
 
-  // 将 JD 显示到侧边栏的 JD 区域下方
+  // 获取 LinkedIn 页面中的职位名称
+  function getLinkedInJobTitle() {
+    // 优先尝试根据 h1 下带 id 的链接获取职位名称
+    const linkEl = document.querySelector('h1 a[id]');
+    if (linkEl && linkEl.innerText.trim()) return linkEl.innerText.trim();
+    // 优先尝试未隐藏的 h1 元素
+    const h1Els = document.querySelectorAll('h1');
+    for (const el of h1Els) {
+      const text = el.innerText.trim();
+      if (text && !el.classList.contains('visually-hidden') && el.offsetParent !== null) {
+        return text;
+      }
+    }
+    // 回退到 Ember 单行链接
+    const aEl = document.querySelector('a.ember-single-line-link');
+    if (aEl && aEl.innerText.trim()) return aEl.innerText.trim();
+    return '';
+  }
+
+  // 将职位名称显示到侧边栏头部，仅当JD存在时才获取，否则显示默认提示
+  function displayJobTitle() {
+    const jdText = getLinkedInJD();
+    const titleEl = document.getElementById('my-extension-job-title');
+    if (!titleEl) return;
+    if (jdText && jdText.trim().length > 0) {
+      const title = getLinkedInJobTitle();
+      titleEl.innerText = title || 'cannot find job title';
+    } else {
+      titleEl.innerText = 'cannot find job title';
+    }
+  }
+
+  // 将 JD 显示到侧边栏的 JD 区域下方，若未获取到则隐藏
   function displayJobDescription() {
     const jdText = getLinkedInJD();
-    // 调试日志：获取 JD 成功或失败
-    if (jdText && jdText.length > 0) {
-      console.log('[Sidebar] JD 获取成功');
-    } else {
-      console.error('[Sidebar] JD 获取失败');
-    }
+    const jdSection = document.getElementById('my-extension-jd-section');
     const jdContent = document.getElementById('my-extension-jd-content');
-    if (jdContent) {
-      jdContent.innerText = jdText || '未获取到职位描述';
-      jdContent.style.whiteSpace = 'pre-wrap';
+    if (jdSection && jdContent) {
+      if (jdText && jdText.length > 0) {
+        jdSection.style.display = '';
+        jdContent.innerText = jdText;
+        jdContent.style.whiteSpace = 'pre-wrap';
+      } else {
+        jdSection.style.display = 'none';
+      }
     }
   }
 })();

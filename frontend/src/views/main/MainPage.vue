@@ -5,7 +5,12 @@
         <h3>Personal Information</h3>
         <p>Account Name: {{ currentUser.full_name || currentUser.email }}</p>
         <p>Email: {{ currentUser.email }}</p>
-        <button @click="handleLogout">Log out</button>
+        <button class="logout-btn" @click="handleLogout">
+          <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18 42H10C8.93913 42 7.92172 41.5786 7.17157 40.8284C6.42143 40.0783 6 39.0609 6 38V10C6 8.93913 6.42143 7.92172 7.17157 7.17157C7.92172 6.42143 8.93913 6 10 6H18M32 34L42 24M42 24L32 14M42 24H18" stroke="#1E1E1E" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Log out</span>
+        </button>
       </div>
     </div>
     <div class="resume-container">
@@ -171,9 +176,18 @@ export default {
   width: 20%;
   border-right: 1px solid #e1e4e8;
   padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
 }
 .personal-info h3 {
   margin-bottom: 10px;
+}
+.personal-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 .resume-container {
   width: 80%;
@@ -304,5 +318,24 @@ export default {
   height: 24px;
   cursor: pointer;
   display: inline-block;
+}
+.logout-btn {
+  background-color: #f3e8ff;
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: #333;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+  outline: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.logout-btn:hover {
+  background-color: #e0d2ff;
+}
+.logout-btn svg {
+  margin-right: 8px;
 }
 </style> 

@@ -1,14 +1,17 @@
 #my-extension-sidebar {
   position: fixed;
   top: 0;
+  bottom: 0; /* 固定底部，与页面底部对齐 */
   right: 0;
-  height: 100vh;
   width: 300px;
   background: white;
   box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
   transform: translateX(100%);
   transition: transform 0.3s ease;
   z-index: 999999;
+  overflow: hidden; /* 禁止整个侧边栏滚动 */
+  display: flex;
+  flex-direction: column;
 }
 
 #my-extension-sidebar.my-extension-sidebar-expanded {
@@ -54,6 +57,9 @@
   gap: 12px;
   padding: 16px 20px;
   border-bottom: 1px solid #ddd;
+  background-color: #f3e8ff; /* 顶部背景色 */
+  border-top-left-radius: 8px; /* 顶部圆角 */
+  border-top-right-radius: 8px;
 }
 
 .my-extension-sidebar-title {
@@ -98,11 +104,12 @@
 }
 
 .my-extension-sidebar-content {
-  padding: 20px;
-  width: 100%;
-  /* 取消外层滚动，仅保留内部内容自然流式 */
-  overflow-y: visible !important;
-  height: auto !important;
+  padding: 0 20px; /* 顶部和底部padding调整 */
+  flex: 1 1 auto; /* 填充父容器剩余空间 */
+  display: flex; /* 垂直 flex 布局 */
+  flex-direction: column;
+  min-height: 0; /* 允许收缩 */
+  overflow: hidden; /* 隐藏整体溢出 */
 }
 
 /* 自定义侧边栏内容滚动条 */
@@ -129,30 +136,67 @@
   left: auto !important;
   right: auto !important;
   overflow: visible !important;
-  margin-bottom: 24px !important;
+  margin: 8px 0 !important; /* 缩小上下边距 */
+  display: flex;
+  flex-direction: column;
+  gap: 16px; /* 纵向均匀间距 */
+}
+
+#my-extension-rating-section p {
+  margin: 0; /* 重置默认外边距 */
+  text-align: center; /* 居中对齐文字 */
 }
 
 .my-extension-rating-box {
-  width: 90%; /* 略窄于侧边栏 */
-  min-height: 40px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  width: 90%; /* 略窄于侧边栏，居中 */
   display: flex;
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  background: #fff;
+  justify-content: flex-start;
+  padding: 12px;
+  margin: 0 auto; /* 水平居中，移除垂直 margin 让 flex 管理间距 */
+  background-color: #f3e8ff; /* 浅紫底色 */
+  border-radius: 8px; /* 圆角矩形 */
+  border: none; /* 去除边框 */
 }
 
-/* 默认只显示第一个分数框 */
-#my-extension-rating-section .my-extension-rating-box:nth-child(n+2) {
-  display: none;
+/* 圆形进度图样式 */
+.circular-chart {
+  max-width: 80px;
+  max-height: 80px;
+}
+.circular-chart .circle-bg {
+  fill: none;
+  stroke: #eee;
+  stroke-width: 3.8;
+}
+.circular-chart .circle {
+  fill: none;
+  stroke: #7f56da;
+  stroke-width: 2.8;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.6s ease;
+}
+.circular-chart .percentage {
+  fill: #333;
+  font-family: sans-serif;
+  font-size: 0.4em;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+/* 简历标题 */
+.rating-title {
+  flex: 1; /* 占满剩余空间 */
+  text-align: center; /* 在剩余空间中居中 */
+  font-size: 12px;
+  color: #333;
+  margin: 0; /* 取消外边距 */
+  word-break: break-word;
 }
 
 /* JD 可编辑区域 */
 #my-extension-jd-section {
   width: 100%; /* 全宽度 */
-  min-height: 60px; /* 留出一定空间 */
   margin-top: 24px; /* 与评分区分隔 */
   padding: 16px; /* 内容内边距 */
   box-sizing: border-box;
@@ -160,6 +204,11 @@
   background: #fff;
   color: #333;
   font-size: 14px;
+  display: flex; /* flex 容器 */
+  flex-direction: column;
+  flex: 1 1 auto; /* 填充内容区剩余空间 */
+  min-height: 0; /* 允许收缩 */
+  overflow: hidden; /* 隐藏内部溢出 */
 }
 
 /* JD 标题样式 */
@@ -170,23 +219,16 @@
   margin-bottom: 8px;
 }
 
-/* 单独为 JD 内容区启用滚动 */
-#my-extension-jd-content {
-  max-height: 60vh; /* 根据需要可调整高度 */
-  overflow-y: auto;
-}
-
 /* Collapse button styled inside sidebar at bottom-right corner */
 #my-extension-collapse-btn {
-  position: absolute;
-  top: 21px; /* 与登录头像按钮垂直居中对齐 */
-  right: 20px; /* 与 header 右内边距一致 */
+  position: static; /* 静态布局，作为 header 内元素 */
+  margin-left: auto; /* 推到 header 右侧 */
   width: 40px;
   height: 40px;
-  background-color: #f0f0f0;
+  background-color: #e0d2ff; /* 加深色，比 header 背景更深 */
   border: 1px solid #ddd;
   color: #666;
-  border-top-left-radius: 4px;
+  border-radius: 50%; /* 圆形按钮 */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -195,7 +237,7 @@
 }
 
 #my-extension-collapse-btn:hover {
-  background-color: #e0e0e0;
+  background-color: #d0b8ff; /* 更深悬停色 */
 }
 
 /* 登录表单区域 */
@@ -247,4 +289,28 @@
   height: 180px; /* 新增：和普通卡片高度接近 */
   border: 1px solid #409eff;
   border-radius: 8px;
+}
+
+/* 职位名称样式 */
+.my-extension-job-title {
+  flex: 1; /* 占据中间剩余空间 */
+  max-width: calc(100% - 102px); /* 预留头像(50px)+间距(12px)+收起按钮(40px) */
+  text-align: center;
+  font-size: 14px;
+  font-weight: bold;
+  color: #333;
+  white-space: normal; /* 允许换行 */
+  overflow: visible;   /* 显示多行 */
+  word-break: break-word; /* 长单词换行 */
+}
+
+/* 单独为 JD 内容区启用滚动 */
+#my-extension-jd-content {
+  flex: 1 1 auto; /* 占据JD区剩余空间 */
+  min-height: 0; /* 允许收缩 */
+  overflow-y: auto; /* JD内容内部滚动 */
+  background: #ffffff; /* 确保白色背景 */
+  /* 已取消阴影效果 */
+  /* box-shadow: none; */
+  /* border-radius: 8px; */
 } 

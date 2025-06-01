@@ -3,29 +3,25 @@
 function getSidebarHTML() {
   return `
     <div class="my-extension-sidebar-header">
-      <a id="my-extension-account-btn" href="javascript:void(0)" title="用户账号">
-        登录
+      <a id="my-extension-account-btn" href="javascript:void(0)" title="User Account">
+        Login
       </a>
-      <!-- Title area intentionally left empty -->
+      <div id="my-extension-job-title" class="my-extension-job-title">
+        Job Title Loading...
+      </div>
+      <button id="my-extension-collapse-btn" title="Collapse sidebar">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12.6 12L8 7.4L9.4 6L15.4 12L9.4 18L8 16.6L12.6 12Z" fill="#1D1B20"/>
+        </svg>
+      </button>
     </div>
     <div id="my-extension-rating-section">
-      <!-- 三个评分框示例，竖向排列，默认只显示第一个 -->
-      <div class="my-extension-rating-box">分数框1</div>
-      <div class="my-extension-rating-box">分数框2</div>
-      <div class="my-extension-rating-box">分数框3</div>
     </div>
     <div class="my-extension-sidebar-content">
-      <!-- JD 区块：标题 + 内容 -->
       <div id="my-extension-jd-section">
         <h3 class="my-extension-jd-title">Job Description</h3>
         <div id="my-extension-jd-content" contenteditable="true"></div>
       </div>
-      <!-- 这里可以添加其他内容 -->
     </div>
-    <button id="my-extension-collapse-btn" title="收起侧边栏">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12.6 12L8 7.4L9.4 6L15.4 12L9.4 18L8 16.6L12.6 12Z" fill="#1D1B20"/>
-      </svg>
-    </button>
   `;
 } 
