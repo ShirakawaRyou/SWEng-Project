@@ -14,8 +14,12 @@ function getSidebarHTML() {
       <div class="my-extension-rating-box">分数框2</div>
       <div class="my-extension-rating-box">分数框3</div>
     </div>
-    <div id="my-extension-jd-section" contenteditable="true">JD</div>
     <div class="my-extension-sidebar-content">
+      <!-- JD 区块：标题 + 内容 -->
+      <div id="my-extension-jd-section">
+        <h3 class="my-extension-jd-title">Job Description</h3>
+        <div id="my-extension-jd-content" contenteditable="true"></div>
+      </div>
       <!-- 这里可以添加其他内容 -->
     </div>
     <button id="my-extension-collapse-btn" title="收起侧边栏">

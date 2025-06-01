@@ -99,9 +99,10 @@
 
 .my-extension-sidebar-content {
   padding: 20px;
-  height: 100%;
   width: 100%;
-  overflow-y: auto;
+  /* 取消外层滚动，仅保留内部内容自然流式 */
+  overflow-y: visible !important;
+  height: auto !important;
 }
 
 /* 自定义侧边栏内容滚动条 */
@@ -122,12 +123,13 @@
 
 /* 评分区域：垂直排列的分数框 */
 #my-extension-rating-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 0;
-  margin-bottom: 24px; /* 与 JD 区隔开 */
+  position: relative !important;
+  top: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  right: auto !important;
+  overflow: visible !important;
+  margin-bottom: 24px !important;
 }
 
 .my-extension-rating-box {
@@ -158,6 +160,20 @@
   background: #fff;
   color: #333;
   font-size: 14px;
+}
+
+/* JD 标题样式 */
+.my-extension-jd-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+/* 单独为 JD 内容区启用滚动 */
+#my-extension-jd-content {
+  max-height: 60vh; /* 根据需要可调整高度 */
+  overflow-y: auto;
 }
 
 /* Collapse button styled inside sidebar at bottom-right corner */

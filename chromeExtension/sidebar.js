@@ -224,11 +224,17 @@
 
     sidebar.classList.toggle('my-extension-sidebar-expanded');
     if (sidebar.classList.contains('my-extension-sidebar-expanded')) {
-      // 先通过后台打开前端页面，触发 frontStorageSync 同步 localStorage
-      chrome.runtime.sendMessage({ action: 'open_front_sync' });
+      // 展开时先同步前端 localStorage，再更新 UI 和获取数据
+      try {
+        chrome.runtime.sendMessage({ action: 'open_front_sync' });
+      } catch (e) {
+        console.error('[Sidebar] open_front_sync exception:', e);
+      }
       checkLoginStatus();
       updateSidebarMessageBasedOnURL();
-      // 延迟获取数据，确保同步完成
+      // 显示页面上的职位描述
+      displayJobDescription();
+      // 延迟获取简历列表，确保同步完成
       setTimeout(fetchSidebarData, 1500);
     }
     
@@ -325,28 +331,65 @@
     }
   }
 
-  // 获取侧边栏数据：用户信息和简历列表
+  // 获取侧边栏数据：用户信息、JD匹配得分等
   function fetchSidebarData() {
+    console.log('[Sidebar] >>> fetchSidebarData start');
     chrome.storage.local.get(['accessToken','currentUser'], ({ accessToken, currentUser }) => {
       console.log('[Sidebar] fetchSidebarData accessToken:', accessToken, 'currentUser:', currentUser);
       if (!accessToken) {
-        console.warn('未登录，跳过获取简历列表');
+        console.warn('未登录，跳过获取数据');
         return;
       }
-      // TODO: 渲染用户信息到侧边栏
-
-      chrome.runtime.sendMessage({ action: 'fetch_resumes', accessToken }, (res) => {
-        console.log('[Sidebar] fetch_resumes response:', res);
-        if (chrome.runtime.lastError || !res) {
-          console.error('获取简历列表失败', chrome.runtime.lastError);
+      // 1. 获取页面上的 JD 文本
+      const jdText = getLinkedInJD();
+      console.log('[Sidebar] JD 文本：', jdText);
+      if (!jdText) {
+        console.error('未获取到JD文本，取消匹配');
+        return;
+      }
+      console.log('[Sidebar] >>> Sending extract_jd_keywords');
+      // 2. 提取 JD 关键词，获取 jd_id
+      chrome.runtime.sendMessage({ action: 'extract_jd_keywords', jd_text: jdText }, extractRes => {
+        console.log('[Sidebar] >>> Received extract_jd_keywords response');
+        console.log('[Sidebar] extract_jd_keywords response:', extractRes);
+        if (chrome.runtime.lastError || !extractRes || !extractRes.success) {
+          console.error('提取JD关键词失败', extractRes && extractRes.error);
           return;
         }
-        if (res.success) {
-          const resumes = res.resumes;
-          // TODO: 渲染简历列表到侧边栏
-        } else {
-          console.error('获取简历列表失败', res.error);
-        }
+        const jd_id = extractRes.jd_id;
+        console.log('[Sidebar] >>> Sending fetch_resumes');
+        // 3. 获取简历列表
+        chrome.runtime.sendMessage({ action: 'fetch_resumes', accessToken }, resumesRes => {
+          console.log('[Sidebar] >>> Received fetch_resumes response');
+          console.log('[Sidebar] fetch_resumes response:', resumesRes);
+          if (chrome.runtime.lastError || !resumesRes || !resumesRes.success) {
+            console.error('获取简历列表失败', resumesRes && resumesRes.error);
+            return;
+          }
+          const resumeIds = resumesRes.resumes.map(r => r.id || r._id || r._id_str || r._id.toString());
+          console.log('[Sidebar] resumeIds:', resumeIds);
+          // 4. 匹配简历得分
+          console.log('[Sidebar] >>> Sending match_resumes');
+          chrome.runtime.sendMessage({ action: 'match_resumes', accessToken, jd_id, resume_ids: resumeIds }, matchRes => {
+            console.log('[Sidebar] >>> Received match_resumes response');
+            console.log('[Sidebar] match_resumes response:', matchRes);
+            if (chrome.runtime.lastError || !matchRes || !matchRes.success) {
+              console.error('匹配简历失败', matchRes && matchRes.error);
+              return;
+            }
+            const results = matchRes.data.match_results;
+            // 将得分渲染到评分框
+            const ratingBoxes = document.querySelectorAll('#my-extension-rating-section .my-extension-rating-box');
+            ratingBoxes.forEach((box, idx) => {
+              if (results[idx]) {
+                box.innerText = results[idx].match_score.toFixed(2);
+              } else {
+                box.innerText = 'N/A';
+              }
+            });
+            console.log('[Sidebar] >>> Scores rendered:', results);
+          });
+        });
       });
     });
   }
@@ -370,4 +413,45 @@
       if (toggleButton) toggleButton.style.display = 'flex';
     }
   });
+
+  // 提取 LinkedIn JD 的函数，优先使用精准选择器
+  function getLinkedInJD() {
+    // 精准匹配：h2.text-heading-large 紧跟 div.mt4 下的 p[dir="ltr"]
+    const pElement = document.querySelector('h2.text-heading-large + div.mt4 p[dir="ltr"]');
+    if (pElement) {
+      console.log('[Sidebar] JD Element found with precise selector');
+      return pElement.innerText.trim();
+    }
+    console.warn('[Sidebar] Precise JD selector did not match, falling back to broader logic');
+    // 回退到原先逻辑
+    const header = document.querySelector('h2.text-heading-large');
+    if (!header) return '';
+    const jdContainer = header.nextElementSibling;
+    if (!jdContainer || !jdContainer.classList.contains('mt4')) return '';
+    const p = jdContainer.querySelector('p[dir="ltr"]');
+    if (p) {
+      return p.innerText.trim();
+    }
+    const spans = jdContainer.querySelectorAll('span');
+    return Array.from(spans)
+      .map(s => s.textContent.trim())
+      .filter(t => t.length > 0)
+      .join('\n');
+  }
+
+  // 将 JD 显示到侧边栏的 JD 区域下方
+  function displayJobDescription() {
+    const jdText = getLinkedInJD();
+    // 调试日志：获取 JD 成功或失败
+    if (jdText && jdText.length > 0) {
+      console.log('[Sidebar] JD 获取成功');
+    } else {
+      console.error('[Sidebar] JD 获取失败');
+    }
+    const jdContent = document.getElementById('my-extension-jd-content');
+    if (jdContent) {
+      jdContent.innerText = jdText || '未获取到职位描述';
+      jdContent.style.whiteSpace = 'pre-wrap';
+    }
+  }
 })();

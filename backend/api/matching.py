@@ -9,11 +9,11 @@ from backend.core.security import get_current_active_user
 from backend.services.keyword_extractor import extract_keywords_from_jd
 from backend.services.matching_service import calculate_match_score
 from backend.services.gemini_service import generate_suggestions_from_gemini # 导入 Gemini 服务
-from datetime import timedelta # 如果使用TTL
+from datetime import timedelta, timezone # 导入 timedelta 和 timezone
 from backend.models.processed_jd import ProcessedJD
 from pydantic import BaseModel, Field, model_validator
 from backend.models.processed_jd import ProcessedJD # 确保导入
-from datetime import timedelta, timezone # 导入 timedelta 和 timezone
+from datetime import datetime # 用于获取当前UTC时间  
 
 
 

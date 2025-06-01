@@ -116,6 +116,49 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({success: false, error: err.message});
       });
     return true;
+  } else if (msg.action === 'extract_jd_keywords') {
+    console.log('[Background] Action: extract_jd_keywords, text length:', msg.jd_text ? msg.jd_text.length : 0);
+    fetch('http://localhost:8000/api/v1/matching/extract-jd-keywords', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ jd_text: msg.jd_text })
+    })
+      .then(res => {
+        console.log('[Background] extract_jd_keywords raw status:', res.status);
+        return res.json();
+      })
+      .then(data => {
+        console.log('[Background] extract_jd_keywords data:', data);
+        sendResponse({success: true, jd_id: data.jd_id, keywords: data.keywords});
+      })
+      .catch(err => {
+        console.error('[Background] extract_jd_keywords error:', err);
+        sendResponse({success: false, error: err.message});
+      });
+    return true;
+  } else if (msg.action === 'match_resumes') {
+    console.log('[Background] Action: match_resumes, token:', msg.accessToken, 'jd_id:', msg.jd_id, 'resume_ids:', msg.resume_ids);
+    fetch('http://localhost:8000/api/v1/matching/match-resumes', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${msg.accessToken}`
+      },
+      body: JSON.stringify({ jd_id: msg.jd_id, resume_ids: msg.resume_ids })
+    })
+      .then(res => {
+        console.log('[Background] match_resumes raw status:', res.status);
+        return res.json();
+      })
+      .then(data => {
+        console.log('[Background] match_resumes data:', data);
+        sendResponse({success: true, data});
+      })
+      .catch(err => {
+        console.error('[Background] match_resumes error:', err);
+        sendResponse({success: false, error: err.message});
+      });
+    return true;
   } else if (msg.action === 'open_front_sync') {
     // 在后台打开前端页面以触发 frontStorageSync，同步 localStorage
     chrome.tabs.create({ url: 'http://localhost:8080', active: false }, (tab) => {
