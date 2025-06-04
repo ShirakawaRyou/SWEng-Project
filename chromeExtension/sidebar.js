@@ -105,6 +105,21 @@
   let cachedJdText = '';
   let cachedJdId = null;
   let suggestionCache = {}; // 缓存每个简历的建议
+  // 用于追踪当前打开的建议框和对应的简历ID
+  let currentSuggestionBox = null;
+  let currentSuggestionResumeId = null;
+
+  // 添加简单的 Markdown 渲染函数，支持标题、加粗、斜体、换行
+  function renderMarkdown(md) {
+    if (!md) return '';
+    return md
+      .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+      .replace(/^# (.*)$/gm, '<h1>$1</h1>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/\n/g, '<br>');
+  }
 
   function createToggleButton() {
     if (document.getElementById('my-extension-sidebar-toggle')) return;
@@ -419,28 +434,38 @@ a 15.9155 15.9155 0 1 1 0 -31.831"/>
               // 点击时获取建议并显示
               box.addEventListener('click', event => {
                 event.stopPropagation();
-                // 先移除其他 box 的 suggestion box
-                document.querySelectorAll('.my-extension-suggestion-box').forEach(el => {
-                  if (!box.contains(el)) el.parentNode.removeChild(el);
-                });
-                // 如果当前 box 已有 suggestion box，点击则关闭它
-                const existing = box.querySelector('.my-extension-suggestion-box');
-                if (existing) {
-                  box.removeChild(existing);
+                // 切换：如果点击同一个简历，关闭现有建议框
+                if (currentSuggestionResumeId === res.resume_id && currentSuggestionBox) {
+                  currentSuggestionBox.remove();
+                  currentSuggestionBox = null;
+                  currentSuggestionResumeId = null;
                   return;
                 }
+                // 移除旧的建议框（如果存在）
+                if (currentSuggestionBox) {
+                  currentSuggestionBox.remove();
+                }
+
                 // 如果已缓存建议，直接显示并退出
                 if (suggestionCache[res.resume_id]) {
                   const suggestionBox = document.createElement('div');
                   suggestionBox.className = 'my-extension-suggestion-box';
-                  suggestionBox.innerText = suggestionCache[res.resume_id];
+                  suggestionBox.innerHTML = renderMarkdown(suggestionCache[res.resume_id]);
                   // 计算视口内固定定位位置
                   const rect = box.getBoundingClientRect();
-                  const width = 350, margin = 10;
+                  const margin = 10, desiredWidth = 350;
+                  // 动态计算宽度，确保不超过可视宽度
+                  const width = Math.min(desiredWidth, window.innerWidth - margin * 2);
+                  // 计算水平位置，确保在可视范围内
+                  const leftPos = Math.min(
+                    Math.max(rect.left - width - margin, margin),
+                    window.innerWidth - width - margin
+                  );
                   suggestionBox.style.position = 'fixed';
-                  suggestionBox.style.left = `${Math.max(margin, rect.left - width - margin)}px`;
+                  suggestionBox.style.left = `${leftPos}px`;
                   suggestionBox.style.top = `${rect.top}px`;
                   suggestionBox.style.width = `${width}px`;
+                  // 动态计算高度，确保不超出可视高度
                   const availableHeight = window.innerHeight - rect.top - margin;
                   suggestionBox.style.maxHeight = `${availableHeight}px`;
                   suggestionBox.style.overflowY = 'auto';
@@ -452,19 +477,28 @@ a 15.9155 15.9155 0 1 1 0 -31.831"/>
                   suggestionBox.style.borderRadius = '8px';
                   suggestionBox.style.zIndex = '1000001';
                   document.body.appendChild(suggestionBox);
+                  // 记录当前打开的建议框
+                  currentSuggestionBox = suggestionBox;
+                  currentSuggestionResumeId = res.resume_id;
                   return;
                 }
+
                 // 占位提示：正在加载建议
                 const suggestionBox = document.createElement('div');
                 suggestionBox.className = 'my-extension-suggestion-box';
                 suggestionBox.innerText = 'Getting suggestions. Please wait a moment';
                 // 计算位置并固定
                 const rect2 = box.getBoundingClientRect();
-                const w2 = 350, margin2 = 10;
+                const margin2 = 10, desiredW = 350;
+                const width2 = Math.min(desiredW, window.innerWidth - margin2 * 2);
+                const leftPos2 = Math.min(
+                  Math.max(rect2.left - width2 - margin2, margin2),
+                  window.innerWidth - width2 - margin2
+                );
                 suggestionBox.style.position = 'fixed';
-                suggestionBox.style.left = `${Math.max(margin2, rect2.left - w2 - margin2)}px`;
+                suggestionBox.style.left = `${leftPos2}px`;
                 suggestionBox.style.top = `${rect2.top}px`;
-                suggestionBox.style.width = `${w2}px`;
+                suggestionBox.style.width = `${width2}px`;
                 const availableHeight2 = window.innerHeight - rect2.top - margin2;
                 suggestionBox.style.maxHeight = `${availableHeight2}px`;
                 suggestionBox.style.overflowY = 'auto';
@@ -476,6 +510,9 @@ a 15.9155 15.9155 0 1 1 0 -31.831"/>
                 suggestionBox.style.borderRadius = '8px';
                 suggestionBox.style.zIndex = '1000001';
                 document.body.appendChild(suggestionBox);
+                // 记录当前打开的建议框
+                currentSuggestionBox = suggestionBox;
+                currentSuggestionResumeId = res.resume_id;
                 // 调用后端建议接口
                 chrome.runtime.sendMessage({
                   action: 'suggestions',
@@ -491,7 +528,7 @@ a 15.9155 15.9155 0 1 1 0 -31.831"/>
                   }
                   // 缓存结果并更新显示
                   suggestionCache[res.resume_id] = suggestionRes.suggestions;
-                  suggestionBox.innerText = suggestionRes.suggestions;
+                  suggestionBox.innerHTML = renderMarkdown(suggestionRes.suggestions);
                 });
               });
               ratingSection.appendChild(box);
