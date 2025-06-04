@@ -1,0 +1,24 @@
+# SWEng-Project-main/.dockerignore
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+.env # 开发用的 .env 文件不应进入镜像
+.venv/
+v_py39/ # 您的虚拟环境文件夹
+.git
+.gitignore
+.pytest_cache/
+tests/ # 通常测试代码不包含在生产镜像中
+htmlcov/ # coverage 报告
+*.sqlite3
+*.db
+*.log
+*.DS_Store
+Dockerfile
+docker-compose.yml
+gunicorn.conf.py # 如果 CMD 中路径指向 /app/gunicorn.conf.py, 且它被 COPY . /app 复制，则不需要排除
+download_nltk.py # 同上
+# 其他您不想复制到镜像中的文件或目录

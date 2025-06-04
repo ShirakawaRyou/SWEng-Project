@@ -91,7 +91,7 @@ async def api_extract_jd_keywords(jd_input: JDInput):
     keywords = extract_keywords_from_jd(jd_input.jd_text)
 
     # 设置过期时间为从现在起24小时后
-    expiration_time = datetime.now(timezone.utc) + timedelta(hours=24) # 使用带时区的UTC时间
+    expiration_time = datetime.now(timezone.utc) + timedelta(hours=1) # 使用带时区的UTC时间
 
     processed_jd_doc = ProcessedJD(
         jd_text=jd_input.jd_text, 
