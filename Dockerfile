@@ -9,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE 1  # 防止 Python 写入 .pyc 文件
 ENV PYTHONUNBUFFERED 1      # 防止 Python 缓冲 stdout 和 stderr，使日志立即显示
 
 # 2. 设置工作目录
-WORKDIR /app
+WORKDIR /app/backend
 
 # 3. ==> 新增：安装系统依赖和编译工具 <==
 RUN apt-get update && \
@@ -24,7 +24,7 @@ ENV BLIS_ARCH=generic
 # COPY ./requirements.txt /app/requirements.txt
 COPY ./backend/requirements.txt /app/backend/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r /app/backend/requirements.txt
+    pip install --no-cache-dir -r requirements.txt
 
 # 5. 下载NLTK数据模型
 # COPY ./download_nltk.py /app/download_nltk.py # 不再需要这个脚本
@@ -42,7 +42,7 @@ RUN python -m spacy download en_core_web_sm
 # 6. 复制应用代码到工作目录
 # 这里我们将整个项目上下文复制到 /app，然后在 .dockerignore 中排除不需要的文件
 # 或者，您可以只复制 backend 目录：COPY ./backend /app/backend
-COPY . /app
+COPY SWEng-Project/backend/ .
 # 如果 gunicorn.conf.py 在根目录，而应用在 backend/
 # 确保 gunicorn 命令能找到它，或者也复制到 /app
 
