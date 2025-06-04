@@ -102,6 +102,9 @@
   const SIDEBAR_WIDTH_VAR = '--my-extension-sidebar-width'; // 定义CSS变量名
   let toggleButton; //新增浮于页面的按钮
   let initialRatingHTML = '';
+  let cachedJdText = '';
+  let cachedJdId = null;
+  let suggestionCache = {}; // 缓存每个简历的建议
 
   function createToggleButton() {
     if (document.getElementById('my-extension-sidebar-toggle')) return;
@@ -338,29 +341,13 @@
     console.log('[Sidebar] >>> fetchSidebarData start');
     chrome.storage.local.get(['accessToken','currentUser'], ({ accessToken, currentUser }) => {
       console.log('[Sidebar] fetchSidebarData accessToken:', accessToken, 'currentUser:', currentUser);
-      if (!accessToken) {
-        console.warn('未登录，跳过获取数据');
-        return;
-      }
+      if (!accessToken) return;
       // 1. 获取页面上的 JD 文本
       const jdText = getLinkedInJD();
-      console.log('[Sidebar] JD 文本：', jdText);
-      if (!jdText) {
-        console.error('未获取到JD文本，取消匹配');
-        return;
-      }
-      console.log('[Sidebar] >>> Sending extract_jd_keywords');
-      // 2. 提取 JD 关键词，获取 jd_id
-      chrome.runtime.sendMessage({ action: 'extract_jd_keywords', jd_text: jdText }, extractRes => {
-        console.log('[Sidebar] >>> Received extract_jd_keywords response');
-        console.log('[Sidebar] extract_jd_keywords response:', extractRes);
-        if (chrome.runtime.lastError || !extractRes || !extractRes.success) {
-          console.error('提取JD关键词失败', extractRes && extractRes.error);
-          return;
-        }
-        const jd_id = extractRes.jd_id;
+      if (!jdText) return;
+      // 定义获取简历列表并匹配的函数
+      const fetchAndMatch = (jd_id) => {
         console.log('[Sidebar] >>> Sending fetch_resumes');
-        // 3. 获取简历列表
         chrome.runtime.sendMessage({ action: 'fetch_resumes', accessToken }, resumesRes => {
           console.log('[Sidebar] >>> Received fetch_resumes response');
           console.log('[Sidebar] fetch_resumes response:', resumesRes);
@@ -370,7 +357,29 @@
           }
           const resumeIds = resumesRes.resumes.map(r => r.id || r._id || r._id_str || r._id.toString());
           console.log('[Sidebar] resumeIds:', resumeIds);
-          // 4. 匹配简历得分
+          // placeholder: 显示rating直到实际得分加载完
+          const ratingSection = document.getElementById('my-extension-rating-section');
+          ratingSection.innerHTML = '';
+          resumesRes.resumes.slice(0, 5).forEach(r => {
+            const placeholderBox = document.createElement('div');
+            placeholderBox.className = 'my-extension-rating-box';
+            placeholderBox.style.position = 'relative';
+            placeholderBox.setAttribute('title', 'Get suggestion');
+            placeholderBox.style.cursor = 'pointer';
+            placeholderBox.innerHTML = `
+              <svg viewBox="0 0 36 36" class="circular-chart">
+                <path class="circle-bg" d="M18 2.0845
+a 15.9155 15.9155 0 1 1 0 31.831
+a 15.9155 15.9155 0 1 1 0 -31.831"/>
+                <path class="circle" stroke-dasharray="0,100" d="M18 2.0845
+a 15.9155 15.9155 0 1 1 0 31.831
+a 15.9155 15.9155 0 1 1 0 -31.831"/>
+                <text x="18" y="20.35" class="percentage">rating</text>
+              </svg>
+              <div class="rating-title">${r.title}</div>
+            `;
+            ratingSection.appendChild(placeholderBox);
+          });
           console.log('[Sidebar] >>> Sending match_resumes');
           chrome.runtime.sendMessage({ action: 'match_resumes', accessToken, jd_id, resume_ids: resumeIds }, matchRes => {
             console.log('[Sidebar] >>> Received match_resumes response');
@@ -385,10 +394,12 @@
             // 渲染分数框
             const ratingSection = document.getElementById('my-extension-rating-section');
             ratingSection.innerHTML = '';
-            // 限制最多显示5个分数框
             results.slice(0, 5).forEach(res => {
               const box = document.createElement('div');
+              box.setAttribute('title', 'Get suggestion');
+              box.style.cursor = 'pointer';
               box.className = 'my-extension-rating-box';
+              box.style.position = 'relative'; // 允许子元素绝对定位
               // 圆形进度图表示匹配得分
               const score = res.match_score;
               const percent = Math.min(Math.max(score, 0), 100);
@@ -405,12 +416,106 @@ a 15.9155 15.9155 0 1 1 0 -31.831"/>
                 </svg>
                 <div class="rating-title">${res.resume_title}</div>
               `;
+              // 点击时获取建议并显示
+              box.addEventListener('click', event => {
+                event.stopPropagation();
+                // 先移除其他 box 的 suggestion box
+                document.querySelectorAll('.my-extension-suggestion-box').forEach(el => {
+                  if (!box.contains(el)) el.parentNode.removeChild(el);
+                });
+                // 如果当前 box 已有 suggestion box，点击则关闭它
+                const existing = box.querySelector('.my-extension-suggestion-box');
+                if (existing) {
+                  box.removeChild(existing);
+                  return;
+                }
+                // 如果已缓存建议，直接显示并退出
+                if (suggestionCache[res.resume_id]) {
+                  const suggestionBox = document.createElement('div');
+                  suggestionBox.className = 'my-extension-suggestion-box';
+                  suggestionBox.innerText = suggestionCache[res.resume_id];
+                  // 计算视口内固定定位位置
+                  const rect = box.getBoundingClientRect();
+                  const width = 350, margin = 10;
+                  suggestionBox.style.position = 'fixed';
+                  suggestionBox.style.left = `${Math.max(margin, rect.left - width - margin)}px`;
+                  suggestionBox.style.top = `${rect.top}px`;
+                  suggestionBox.style.width = `${width}px`;
+                  const availableHeight = window.innerHeight - rect.top - margin;
+                  suggestionBox.style.maxHeight = `${availableHeight}px`;
+                  suggestionBox.style.overflowY = 'auto';
+                  suggestionBox.style.overflowX = 'hidden';
+                  suggestionBox.style.background = '#fff';
+                  suggestionBox.style.border = '1px solid #ccc';
+                  suggestionBox.style.padding = '10px';
+                  suggestionBox.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+                  suggestionBox.style.borderRadius = '8px';
+                  suggestionBox.style.zIndex = '1000001';
+                  document.body.appendChild(suggestionBox);
+                  return;
+                }
+                // 占位提示：正在加载建议
+                const suggestionBox = document.createElement('div');
+                suggestionBox.className = 'my-extension-suggestion-box';
+                suggestionBox.innerText = 'Getting suggestions. Please wait a moment';
+                // 计算位置并固定
+                const rect2 = box.getBoundingClientRect();
+                const w2 = 350, margin2 = 10;
+                suggestionBox.style.position = 'fixed';
+                suggestionBox.style.left = `${Math.max(margin2, rect2.left - w2 - margin2)}px`;
+                suggestionBox.style.top = `${rect2.top}px`;
+                suggestionBox.style.width = `${w2}px`;
+                const availableHeight2 = window.innerHeight - rect2.top - margin2;
+                suggestionBox.style.maxHeight = `${availableHeight2}px`;
+                suggestionBox.style.overflowY = 'auto';
+                suggestionBox.style.overflowX = 'hidden';
+                suggestionBox.style.background = '#fff';
+                suggestionBox.style.border = '1px solid #ccc';
+                suggestionBox.style.padding = '10px';
+                suggestionBox.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+                suggestionBox.style.borderRadius = '8px';
+                suggestionBox.style.zIndex = '1000001';
+                document.body.appendChild(suggestionBox);
+                // 调用后端建议接口
+                chrome.runtime.sendMessage({
+                  action: 'suggestions',
+                  accessToken,
+                  jd_id,
+                  resume_id: res.resume_id
+                }, suggestionRes => {
+                  // 更新占位提示为实际建议或错误
+                  if (chrome.runtime.lastError || !suggestionRes || !suggestionRes.success) {
+                    console.error('获取建议失败', suggestionRes && suggestionRes.error);
+                    suggestionBox.innerText = suggestionRes && suggestionRes.error ? suggestionRes.error : 'Failed to get suggestions';
+                    return;
+                  }
+                  // 缓存结果并更新显示
+                  suggestionCache[res.resume_id] = suggestionRes.suggestions;
+                  suggestionBox.innerText = suggestionRes.suggestions;
+                });
+              });
               ratingSection.appendChild(box);
             });
             console.log('[Sidebar] >>> Scores rendered:', results);
           });
         });
-      });
+      };
+      // 如果JD未变化且已缓存，则复用缓存的jd_id
+      if (cachedJdText === jdText && cachedJdId) {
+        console.log('[Sidebar] >>> Using cached jd_id', cachedJdId);
+        fetchAndMatch(cachedJdId);
+      } else {
+        console.log('[Sidebar] >>> Sending extract_jd_keywords');
+        chrome.runtime.sendMessage({ action: 'extract_jd_keywords', jd_text: jdText }, extractRes => {
+          if (chrome.runtime.lastError || !extractRes || !extractRes.success) {
+            console.error('提取JD关键词失败', extractRes && extractRes.error);
+            return;
+          }
+          cachedJdText = jdText;
+          cachedJdId = extractRes.jd_id;
+          fetchAndMatch(cachedJdId);
+        });
+      }
     });
   }
 

@@ -159,7 +159,33 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({success: false, error: err.message});
       });
     return true;
-  } else if (msg.action === 'open_front_sync') {
+  }
+  // 新增：处理建议请求
+  else if (msg.action === 'suggestions') {
+    console.log('[Background] Action: suggestions, token:', msg.accessToken, 'jd_id:', msg.jd_id, 'resume_id:', msg.resume_id);
+    fetch('http://localhost:8000/api/v1/matching/suggestions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${msg.accessToken}`
+      },
+      body: JSON.stringify({ jd_id: msg.jd_id, resume_id: msg.resume_id })
+    })
+      .then(res => {
+        console.log('[Background] suggestions raw status:', res.status);
+        return res.json();
+      })
+      .then(data => {
+        console.log('[Background] suggestions data:', data);
+        sendResponse({ success: true, ...data });
+      })
+      .catch(err => {
+        console.error('[Background] suggestions error:', err);
+        sendResponse({ success: false, error: err.message });
+      });
+    return true;
+  }
+  else if (msg.action === 'open_front_sync') {
     // 在后台打开前端页面以触发 frontStorageSync，同步 localStorage
     chrome.tabs.create({ url: 'http://localhost:8080', active: false }, (tab) => {
       const tabId = tab.id;

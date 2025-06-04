@@ -4,7 +4,6 @@ import LoginPage from '../views/login/LoginPage.vue';
 import MainPage from '../views/main/MainPage.vue';
 import RegisterPage from '../views/register/RegisterPage.vue';
 import TermsPage from '../views/TermsPage.vue';
-import ForgotPassword from '../views/forgot/ForgotPassword.vue';
 import ResumePage from '../views/resume/ResumePage.vue';
 const routes = [
   { path: '/', redirect: { name: 'Login' } },
@@ -12,11 +11,6 @@ const routes = [
     path: '/login',
     name: 'Login',
     component: LoginPage
-  },
-  {
-    path: '/forgot-password',
-    name: 'ForgotPassword',
-    component: ForgotPassword
   },
   {
     path: '/register',

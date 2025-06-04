@@ -12,7 +12,6 @@
         <div class="form-group password-group">
           <label for="password">
             <span>Password</span>
-            <router-link to="/forgot-password" class="forgot-link">Forgot password?</router-link>
           </label>
           <input id="password" v-model="password" type="password" placeholder="Password" required />
         </div>
